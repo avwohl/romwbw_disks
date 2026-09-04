@@ -1,0 +1,48 @@
+create this as public repo romwbw_disks.
+Make a README based on the following
+List it as under constriction
+Projects in ../ cpmdroid ioscpm romwbw_emu z80cpmw
+All used roms and disk images for romwbw.
+We make up the rom, or at least part of it.
+The rom images need to match the disk images
+for the bios version.
+All of them I *think* now get thier disk images
+from ioscpm github release area.
+But that is really wierd as ioscpm is downstream
+from romwbw_emu.
+Currently there is only one version string.
+The problem is the version string really says
+the interface spec to the cpmemu emulator
+and its virtual devices.
+Since we last pulled in RomWBW they have done a major
+release to v3.6.0.  Under the current scheam there is
+no way to allow selecting the RomWBW version.  Also
+doing any sort of a release for new roms or disk images
+means new release of all the clients with no real changes.
+In this rewpo romwbw_disks, create a new public repo.
+Under a version string for the interface to the clients above
+lookup a list of rom versions.  For example, lets start the
+emulator interface version at v0.  So all the above would pull in
+a catalog.  In the first level of that would be RomWBW versions.
+Initially it would have v3.5.1 (what we currently support)
+and the new v3.6.0.
+Under that would be a list of rom images and disk images.
+
+In a client, say ios for exmple it would currently be built for v0
+interface to our stuff.  It would fetch some file json? and get the list
+of rom versions v3.5.1 v3.6.0 for the user to pick from.
+
+After that the user could pick disks.
+The disk file names should probably have the v0 and rom version in the file names?
+to be clear about what works with what.
+At this time no changes to the above clients. When everthing is ready here
+and published we can start changing the clients.
+
+I have no idea what needs to be changed to work with v3.6.0
+In the past when the rom version didnt matech a disk bios
+it would print a version mismatch.
+
+THe w8.com and r8.com and bios sources should be in this project.
+When we update the other client we can clean out any w8/r8/bios sources
+Make a note to check if the other clients still need um80 and if they
+still need to build any machine code

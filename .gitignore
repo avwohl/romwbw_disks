@@ -1,0 +1,18 @@
+# Build output.  Everything here is reproducible from tools/build_all.sh, and
+# the disk images run to hundreds of megabytes, so none of it is tracked.  The
+# generated catalogs ARE tracked, under catalog/, because a diff of those is
+# how you see what a release changed.
+build/
+
+# Assembler and cpmtools leftovers, in case anything is run in place.
+*.rel
+*.sym
+*.bin
+*.o
+
+.DS_Store
+__pycache__/
+*.pyc
+
+# Editor backups (todo.txt~ etc.)
+*~

@@ -1,0 +1,20 @@
+{
+  "romwbw_version": "3.5.1",
+  "_comment": "Emulator ROMs built for this RomWBW release. Bank 0 is assembled from src/emu_hbios.asm with versions/<ver>/version.json stamped into the HCB; banks 1-15 are lifted verbatim from the named upstream stock ROM. Sizes and hashes are computed from the built artifact, never written here.",
+  "roms": [
+    {
+      "id": "emu_avw",
+      "stock": "Binary/SBC_simh_std.rom",
+      "name": "EMU AVW",
+      "description": "Standard emulator ROM. Our HBIOS proxy in bank 0 over the RomWBW SBC_simh_std ROM disk in banks 1-15. This is the ROM every shipped client bundles today.",
+      "default": true
+    },
+    {
+      "id": "emu_rcz80",
+      "stock": "Binary/RCZ80_std.rom",
+      "name": "EMU RCZ80",
+      "description": "Alternate emulator ROM. Same HBIOS proxy in bank 0, but banks 1-15 come from the RomWBW RCZ80_std ROM disk, so the ROM-resident applications match an RC2014 Z80 build.",
+      "default": false
+    }
+  ]
+}

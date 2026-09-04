@@ -1,0 +1,190 @@
+{
+  "romwbw_version": "3.5.1",
+  "_comment": "Disk images published for this RomWBW release. 'upstream' is the path inside RomWBW-v<ver>-Package.zip; sizes and hashes are never written here, they are computed from the built artifact by tools/gen_catalog.py.",
+  "disks": [
+    {
+      "id": "hd1k_combo",
+      "upstream": "Binary/hd1k_combo.img",
+      "name": "Combo (Recommended)",
+      "description": "Six-slice disk: CP/M 2.2, ZSDOS, NZCOM, CP/M 3, ZPM3 and a WordStar 4 applications slice, plus R8/W8 host file transfer on slice 0. Best starter disk.",
+      "license": "Mixed",
+      "diskdef": "wbw_hd1k_0",
+      "inject_utils": [
+        "wbw_hd1k_0"
+      ],
+      "defaultSlot": 0,
+      "slices": 6
+    },
+    {
+      "id": "hd1k_cpm22",
+      "upstream": "Binary/hd1k_cpm22.img",
+      "name": "CP/M 2.2",
+      "description": "Digital Research CP/M 2.2 operating system with standard utilities.",
+      "license": "Mixed",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_zsdos",
+      "upstream": "Binary/hd1k_zsdos.img",
+      "name": "ZSDOS",
+      "description": "Z-System DOS - enhanced CP/M compatible OS with date/time stamping.",
+      "license": "Mixed",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_zpm3",
+      "upstream": "Binary/hd1k_zpm3.img",
+      "name": "ZPM3",
+      "description": "Z-System ZPM3 - enhanced CP/M 3 compatible with ZCPR extensions.",
+      "license": "Mixed",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_cpm3",
+      "upstream": "Binary/hd1k_cpm3.img",
+      "name": "CP/M 3",
+      "description": "CP/M Plus (CP/M 3.0), Digital Research's banked successor to CP/M 2.2.",
+      "license": "Mixed",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_nzcom",
+      "upstream": "Binary/hd1k_nzcom.img",
+      "name": "NZCOM",
+      "description": "NZCOM - Z-System implementation for CP/M 2.2 environments.",
+      "license": "Mixed",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_qpm",
+      "upstream": "Binary/hd1k_qpm.img",
+      "name": "QPM",
+      "description": "QP/M operating system, a CP/M 2.2 compatible alternative.",
+      "license": "Mixed",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_games",
+      "upstream": "Binary/hd1k_games.img",
+      "name": "Games",
+      "description": "Collection of classic CP/M games including adventures and arcade titles.",
+      "license": "Abandonware",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_aztecc",
+      "upstream": "Binary/hd1k_aztecc.img",
+      "name": "Aztec C",
+      "description": "Aztec C compiler for CP/M - professional C development environment.",
+      "license": "Abandonware",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_bascomp",
+      "upstream": "Binary/hd1k_bascomp.img",
+      "name": "BASIC Compilers",
+      "description": "Collection of BASIC compilers and interpreters for CP/M.",
+      "license": "Abandonware",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_cowgol",
+      "upstream": "Binary/hd1k_cowgol.img",
+      "name": "Cowgol",
+      "description": "Cowgol compiler - modern language targeting 8-bit systems.",
+      "license": "Open Source",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_fortran",
+      "upstream": "Binary/hd1k_fortran.img",
+      "name": "Fortran",
+      "description": "Fortran compiler for CP/M - scientific computing language.",
+      "license": "Abandonware",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_hitechc",
+      "upstream": "Binary/hd1k_hitechc.img",
+      "name": "Hi-Tech C",
+      "description": "Hi-Tech C compiler - optimizing C compiler for Z80 CP/M.",
+      "license": "Freeware",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_tpascal",
+      "upstream": "Binary/hd1k_tpascal.img",
+      "name": "Turbo Pascal",
+      "description": "Borland Turbo Pascal 3.0 - fast Pascal IDE and compiler.",
+      "license": "Freeware",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_z80asm",
+      "upstream": "Binary/hd1k_z80asm.img",
+      "name": "Z80 Assemblers",
+      "description": "Collection of Z80 assemblers and development tools.",
+      "license": "Mixed",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_ws4",
+      "upstream": "Binary/hd1k_ws4.img",
+      "name": "WordStar 4",
+      "description": "WordStar 4.0 - classic word processor for CP/M.",
+      "license": "Abandonware",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_z3plus",
+      "upstream": "Binary/hd1k_z3plus.img",
+      "name": "Z3Plus",
+      "description": "Z3Plus - ZCPR3 command processor with enhanced features.",
+      "license": "Mixed",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_bp",
+      "upstream": "Binary/hd1k_bp.img",
+      "name": "B/P Bios",
+      "description": "B/P Bios utilities and tools disk.",
+      "license": "Mixed",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_msxroms1",
+      "upstream": "Binary/hd1k_msxroms1.img",
+      "name": "MSX ROMs 1",
+      "description": "MSX ROM images collection - volume 1.",
+      "license": "Abandonware",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    },
+    {
+      "id": "hd1k_msxroms2",
+      "upstream": "Binary/hd1k_msxroms2.img",
+      "name": "MSX ROMs 2",
+      "description": "MSX ROM images collection - volume 2.",
+      "license": "Abandonware",
+      "diskdef": "wbw_hd1k",
+      "inject_utils": []
+    }
+  ]
+}

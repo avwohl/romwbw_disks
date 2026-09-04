@@ -1,0 +1,27 @@
+{
+  "romwbw_version": "3.5.1",
+  "released": "2025-05-21",
+  "status": "stable",
+  "default": true,
+  "hbios": {
+    "major": 3,
+    "minor": 5,
+    "update": 1,
+    "patch": 0,
+    "ver_byte": "0x35",
+    "upd_byte": "0x10",
+    "sysver_de": "0x3510"
+  },
+  "upstream": {
+    "tag": "v3.5.1",
+    "package_url": "https://github.com/wwarthen/RomWBW/releases/download/v3.5.1/RomWBW-v3.5.1-Package.zip",
+    "unpacked_dir": "RomWBW-v3.5.1",
+    "stock_rom": "Binary/SBC_simh_std.rom",
+    "images_dir": "Binary",
+    "package_sha256": "e696ff2faf8f6420367ae3d0ad14c9daf1d7b08727b2699d005e877cc755da20"
+  },
+  "notes": [
+    "The RomWBW release every shipped client is pinned to today.",
+    "CBIOS banner in the boot slices reads 'CBIOS v3.5.1 [WBW]'."
+  ]
+}

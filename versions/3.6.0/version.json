@@ -1,0 +1,29 @@
+{
+  "romwbw_version": "3.6.0",
+  "released": "2026-03-28",
+  "status": "preview",
+  "default": false,
+  "hbios": {
+    "major": 3,
+    "minor": 6,
+    "update": 0,
+    "patch": 0,
+    "ver_byte": "0x36",
+    "upd_byte": "0x00",
+    "sysver_de": "0x3600"
+  },
+  "upstream": {
+    "tag": "v3.6.0",
+    "package_url": "https://github.com/wwarthen/RomWBW/releases/download/v3.6.0/RomWBW-v3.6.0-Package.zip",
+    "unpacked_dir": "RomWBW-v3.6.0",
+    "stock_rom": "Binary/SBC_simh_std.rom",
+    "images_dir": "Binary",
+    "package_sha256": "bdf847d52cf6b4dd522fa81acf32e24c044ecb26f2d9ff8af72def9d6c41ffc2"
+  },
+  "notes": [
+    "PREVIEW. No released client can load a v3.6.0 ROM yet: romwbw_emu's emu_validate_rom_hcb (src/emu_init.cc:52-60) refuses any ROM whose HCB version bytes differ from the compile-time ROMWBW_PIN_STR. See docs/CLIENT_MIGRATION.md.",
+    "hd1k_ws4.img does not exist in v3.6.0; upstream combo.def slice 5 is 'wp' (WordStar / word processing) where v3.5.1 had 'ws4'.",
+    "NVRAM checksums do not validate across a version change: RomWBW's NVSW_CHECKSUM XORs the version bytes into the seed, so a blob saved under 3.5.1 silently resets under a 3.6.0 ROM. Clients must namespace their NVRAM store per RomWBW version.",
+    "Do NOT build from archive/romwbw-v3.6.0/SBC_simh_std_v360.rom in romwbw_emu: it is a v3.6.0-dev.46 snapshot from 2025-12-12, not the release, and its HCB reads 36 00 so a version check cannot tell the difference."
+  ]
+}

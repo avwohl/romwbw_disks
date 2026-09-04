@@ -1,0 +1,1834 @@
+#!/usr/bin/env python3
+"""CP/M disk image utility supporting multiple disk formats.
+
+Supported formats:
+  - sssd:  8" SSSD floppy (ibm-3740 compatible, 250KB)
+  - hd1k:  Standard RomWBW hd1k format (8MB single slice)
+  - combo: Combo disk with 1MB MBR prefix + 6x8MB slices (51MB total)
+
+Usage:
+  cpm_disk.py create <disk.img>                    # Create 8MB hd1k disk
+  cpm_disk.py create --sssd <disk.img>             # Create 250KB SSSD floppy
+  cpm_disk.py create --combo <disk.img>            # Create 51MB combo disk
+  cpm_disk.py add <disk.img> <file1.com> [...]     # Add files to disk
+  cpm_disk.py list <disk.img>                      # List files in disk
+  cpm_disk.py delete <disk.img> <file1.com> [...]  # Delete files from disk
+  cpm_disk.py extract <disk.img> <file1.com> [...] # Extract files from disk
+  cpm_disk.py read-boot <disk.img> <output.bin>       # Read boot area to file
+  cpm_disk.py write-boot <disk.img> <input.bin>       # Write to sector 0
+  cpm_disk.py write-boot <disk.img> <input.bin> 4     # Write starting at sector 4
+  cpm_disk.py write-boot <disk.img> <input.bin> 4 2   # Write at sector 4, pad to 2 sectors
+
+Boot area sizes:
+  - SSSD:  6656 bytes  (2 tracks x 26 sectors x 128 bytes, no skew)
+  - hd1k:  16384 bytes (2 tracks x 16 sectors x 512 bytes)
+  - combo: 16384 bytes (after 1MB prefix)
+
+Format is auto-detected for existing disks based on file size.
+
+CP/M Extent Handling
+--------------------
+CP/M directory entries are 32 bytes and can only track a limited amount of file
+data. For files larger than this limit, multiple directory entries called
+"extents" are used. Key concepts:
+
+1. RECORDS: CP/M measures file size in 128-byte records (not bytes).
+
+2. EXTENT CAPACITY: Each directory entry can track up to 128 records (16KB).
+   The actual capacity depends on block size and the EXM (Extent Mask) value
+   from the Disk Parameter Block:
+   - EXM=0: Each entry = 1 logical extent = 128 records = 16KB max
+   - EXM=1: Each entry = 2 logical extents = 256 records = 32KB max
+
+3. EXTENT NUMBERING: The EX field (byte 12, bits 0-4) and S2 field (byte 14,
+   bits 0-5) combine to form an 11-bit extent number:
+     extent_num = (S2 << 5) | EX
+   For EXM=1, the extent number is the LAST logical extent in that physical
+   directory entry (e.g., extent 1 covers logical extents 0-1).
+
+4. RECORD COUNT (RC): Byte 15 contains the number of records used in the
+   LAST logical extent of this directory entry (1-128).
+
+5. BLOCK POINTERS: Bytes 16-31 contain pointers to disk blocks:
+   - 8-bit pointers (16 per entry): Used when DSM < 256 (small disks)
+   - 16-bit pointers (8 per entry): Used when DSM >= 256 (large disks)
+
+Example: A 50KB file on an hd1k disk (EXM=1, 16-bit pointers):
+  - 50KB = 400 records = 2 physical extents
+  - Extent 0: directory entry with extent_num=1, RC=128 (covers records 0-255)
+  - Extent 1: directory entry with extent_num=3, RC=16 (covers records 256-399)
+
+When reading files, extents must be processed in order by extent number.
+When writing files, new directory entries are allocated for each extent.
+"""
+
+import sys
+import os
+import struct
+import argparse
+
+# Common CP/M constants
+SECTOR_SIZE_HD = 512    # hd1k sector size
+SECTOR_SIZE_SSSD = 128  # SSSD sector size
+
+# ibm-3740 (8" SSSD) format constants
+SSSD_SECTOR_SIZE = 128
+SSSD_SECTORS_PER_TRACK = 26
+SSSD_TRACKS = 77
+SSSD_BLOCK_SIZE = 1024   # 1KB blocks
+SSSD_DIR_ENTRIES = 64
+SSSD_BOOT_TRACKS = 2
+SSSD_SIZE = SSSD_TRACKS * SSSD_SECTORS_PER_TRACK * SSSD_SECTOR_SIZE  # 256,256 bytes
+SSSD_DIR_START = SSSD_BOOT_TRACKS * SSSD_SECTORS_PER_TRACK * SSSD_SECTOR_SIZE  # 6656 bytes
+SSSD_SKEW = 6  # Standard ibm-3740 sector skew (boot tracks have no skew)
+
+
+def generate_skew_table(sectors, skew):
+    """Generate sector translation table for given skew factor.
+
+    Returns a list where table[logical_sector] = physical_sector (0-indexed).
+    Uses the standard CP/M algorithm to avoid sector collisions.
+    """
+    if skew == 0:
+        return list(range(sectors))
+
+    # table[physical] = logical during construction
+    table = [None] * sectors
+    physical = 0
+    for logical in range(sectors):
+        # Find next free physical sector
+        while table[physical] is not None:
+            physical = (physical + 1) % sectors
+        table[physical] = logical
+        physical = (physical + skew) % sectors
+
+    # Invert: we want logical_to_physical
+    logical_to_physical = [0] * sectors
+    for phys, log in enumerate(table):
+        logical_to_physical[log] = phys
+    return logical_to_physical
+
+
+# Pre-computed skew table for ibm-3740
+SSSD_SKEW_TABLE = generate_skew_table(SSSD_SECTORS_PER_TRACK, SSSD_SKEW)
+
+# hd1k format constants
+BLOCK_SIZE = 4096  # 4KB blocks for hd1k
+
+
+def cpm_pattern_to_83(pattern):
+    """Convert a CP/M wildcard pattern to 8.3 format with ? expansion.
+
+    In CP/M, * fills the rest of the field with ?, and ? matches any char.
+    E.g., "*.COM" -> "????????COM", "A*.*" -> "A???????????"
+    """
+    pattern = pattern.upper()
+    if '.' in pattern:
+        name, ext = pattern.rsplit('.', 1)
+    else:
+        name, ext = pattern, ''
+
+    # Expand * to fill rest of field with ?
+    if '*' in name:
+        idx = name.index('*')
+        name = name[:idx] + '?' * (8 - idx)
+    name = name[:8].ljust(8, ' ')
+
+    if '*' in ext:
+        idx = ext.index('*')
+        ext = ext[:idx] + '?' * (3 - idx)
+    ext = ext[:3].ljust(3, ' ')
+
+    return name + ext
+
+
+def cpm_match(pattern_83, filename_83):
+    """Match a filename against a CP/M pattern (both in 8.3 format).
+
+    ? matches any character, other characters must match exactly.
+    """
+    if len(pattern_83) != 11 or len(filename_83) != 11:
+        return False
+    for p, f in zip(pattern_83, filename_83):
+        if p != '?' and p != f:
+            return False
+    return True
+
+# Disk format sizes
+HD1K_SINGLE_SIZE = 8388608      # 8 MB
+HD1K_SLICE_SIZE = 8388608       # 8 MB per slice
+HD1K_MBR_PREFIX = 1048576       # 1 MB MBR prefix for combo
+HD1K_COMBO_SLICES = 6           # 6 slices in combo disk
+HD1K_COMBO_SIZE = HD1K_MBR_PREFIX + (HD1K_COMBO_SLICES * HD1K_SLICE_SIZE)  # ~51 MB
+
+
+def format_sssd_disk(data):
+    """Format an SSSD (ibm-3740) disk with empty CP/M directory.
+
+    ibm-3740 format:
+    - 128 bytes/sector, 26 sectors/track, 77 tracks
+    - Block size: 1024 bytes (8 sectors)
+    - Boot tracks: 2 (reserved)
+    - Directory: 64 entries x 32 bytes = 2KB = 2 blocks
+
+    Directory starts at track 2, sector 0
+    """
+    dir_size = SSSD_DIR_ENTRIES * 32
+
+    # Initialize directory with 0xE5 (CP/M empty directory marker)
+    data[SSSD_DIR_START:SSSD_DIR_START + dir_size] = bytes([0xE5] * dir_size)
+
+
+def create_sssd_disk():
+    """Create a new formatted SSSD (ibm-3740) disk image in memory.
+
+    Returns:
+        bytearray containing the formatted disk image
+    """
+    data = bytearray(SSSD_SIZE)
+    format_sssd_disk(data)
+    return data
+
+
+def format_hd1k_slice(data, offset):
+    """Format a single hd1k slice with empty CP/M directory.
+
+    hd1k format:
+    - 512 bytes/sector, 16 sectors/track, 1024 tracks
+    - Block size: 4096 bytes (8 sectors)
+    - Boot tracks: 2 (reserved)
+    - Directory: 1024 entries x 32 bytes = 32KB = 8 blocks
+
+    Directory starts at track 2, sector 0
+    """
+    BOOT_TRACKS = 2
+    SECTORS_PER_TRACK = 16
+    DIR_ENTRIES = 1024
+    DIR_ENTRY_SIZE = 32
+
+    dir_offset = offset + (BOOT_TRACKS * SECTORS_PER_TRACK * SECTOR_SIZE_HD)
+    dir_size = DIR_ENTRIES * DIR_ENTRY_SIZE
+
+    # Initialize directory with 0xE5 (CP/M empty directory marker)
+    if dir_offset + dir_size <= len(data):
+        data[dir_offset:dir_offset + dir_size] = bytes([0xE5] * dir_size)
+
+
+def create_combo_mbr(data):
+    """Create MBR for combo disk with RomWBW partition type.
+
+    MBR structure:
+    - Offset 0x1BE: First partition entry (16 bytes)
+    - Offset 0x1FE: Signature 0x55AA
+    """
+    PARTITION_START_LBA = 2048  # 1MB / 512 = 2048 sectors
+    PARTITION_SIZE_LBA = (HD1K_COMBO_SIZE - HD1K_MBR_PREFIX) // 512
+
+    # Partition entry at offset 0x1BE
+    part_offset = 0x1BE
+    data[part_offset + 0] = 0x00   # Not bootable
+    data[part_offset + 1] = 0x01   # CHS start head
+    data[part_offset + 2] = 0x01   # CHS start sector
+    data[part_offset + 3] = 0x00   # CHS start cylinder
+    data[part_offset + 4] = 0x2E   # Partition type: RomWBW hd1k
+    data[part_offset + 5] = 0xFE   # CHS end head
+    data[part_offset + 6] = 0xFF   # CHS end sector
+    data[part_offset + 7] = 0xFF   # CHS end cylinder
+
+    # LBA start (little-endian)
+    struct.pack_into('<I', data, part_offset + 8, PARTITION_START_LBA)
+    # LBA size (little-endian)
+    struct.pack_into('<I', data, part_offset + 12, PARTITION_SIZE_LBA)
+
+    # MBR signature
+    data[0x1FE] = 0x55
+    data[0x1FF] = 0xAA
+
+
+def create_hd1k_disk(combo=False):
+    """Create a new formatted hd1k disk image in memory.
+
+    Args:
+        combo: If True, create combo disk (51MB), otherwise single slice (8MB)
+
+    Returns:
+        bytearray containing the formatted disk image
+    """
+    if combo:
+        size = HD1K_COMBO_SIZE
+    else:
+        size = HD1K_SINGLE_SIZE
+
+    # Allocate and zero-fill
+    data = bytearray(size)
+
+    if not combo:
+        # Single slice: format the entire disk
+        format_hd1k_slice(data, 0)
+    else:
+        # Combo disk: create MBR and format each slice
+        create_combo_mbr(data)
+
+        # Format each slice (starts after 1MB MBR prefix)
+        for slice_num in range(HD1K_COMBO_SLICES):
+            slice_offset = HD1K_MBR_PREFIX + (slice_num * HD1K_SLICE_SIZE)
+            format_hd1k_slice(data, slice_offset)
+
+    return data
+
+
+class SssdDisk:
+    """SSSD (ibm-3740) 8" floppy disk format."""
+
+    SECTOR_SIZE = SSSD_SECTOR_SIZE  # 128 bytes
+    SECTORS_PER_TRACK = SSSD_SECTORS_PER_TRACK  # 26
+    BLOCK_SIZE = SSSD_BLOCK_SIZE  # 1024 bytes
+    DIR_ENTRIES = SSSD_DIR_ENTRIES  # 64
+    BOOT_TRACKS = SSSD_BOOT_TRACKS  # 2
+    DIR_START = SSSD_DIR_START  # 6656 bytes (2 tracks * 26 sectors * 128 bytes)
+    # With 1KB blocks and DSM < 256, block pointers are 8-bit
+    # EXM = 0 for 1KB blocks, so each extent = 128 records = 16KB = 16 blocks
+    BLOCKS_PER_EXTENT = 16
+    RECORDS_PER_BLOCK = BLOCK_SIZE // 128  # 8 records per 1KB block
+
+    def __init__(self, disk_data, use_skew=True):
+        self.data = disk_data
+        self.use_skew = use_skew
+        self.skew_table = SSSD_SKEW_TABLE if use_skew else list(range(self.SECTORS_PER_TRACK))
+
+    def logical_sector_to_offset(self, track, logical_sector):
+        """Convert (track, logical_sector) to byte offset in disk image.
+
+        Boot tracks (0-1) have no skew; data tracks use skew table.
+        logical_sector is 0-indexed.
+        """
+        if track < self.BOOT_TRACKS:
+            # Boot tracks: no skew
+            physical_sector = logical_sector
+        else:
+            # Data tracks: apply skew
+            physical_sector = self.skew_table[logical_sector]
+        return (track * self.SECTORS_PER_TRACK + physical_sector) * self.SECTOR_SIZE
+
+    def read_sector(self, track, logical_sector):
+        """Read a single logical sector from disk."""
+        offset = self.logical_sector_to_offset(track, logical_sector)
+        return bytes(self.data[offset:offset + self.SECTOR_SIZE])
+
+    def write_sector(self, track, logical_sector, data):
+        """Write a single logical sector to disk."""
+        offset = self.logical_sector_to_offset(track, logical_sector)
+        self.data[offset:offset + self.SECTOR_SIZE] = data[:self.SECTOR_SIZE]
+
+    def read_block(self, block_num):
+        """Read a block (8 consecutive logical sectors) from the data area.
+
+        Block 0 starts at track BOOT_TRACKS (directory), blocks are numbered
+        sequentially across tracks.
+        """
+        # Calculate starting track and sector for this block
+        sectors_per_block = self.BLOCK_SIZE // self.SECTOR_SIZE  # 8
+        logical_sector_num = block_num * sectors_per_block
+        track = self.BOOT_TRACKS + (logical_sector_num // self.SECTORS_PER_TRACK)
+        sector_in_track = logical_sector_num % self.SECTORS_PER_TRACK
+
+        result = bytearray()
+        for i in range(sectors_per_block):
+            current_sector = sector_in_track + i
+            current_track = track
+            # Handle track crossing
+            while current_sector >= self.SECTORS_PER_TRACK:
+                current_sector -= self.SECTORS_PER_TRACK
+                current_track += 1
+            result.extend(self.read_sector(current_track, current_sector))
+        return bytes(result)
+
+    def write_block(self, block_num, data):
+        """Write a block (8 consecutive logical sectors) to the data area."""
+        sectors_per_block = self.BLOCK_SIZE // self.SECTOR_SIZE  # 8
+        logical_sector_num = block_num * sectors_per_block
+        track = self.BOOT_TRACKS + (logical_sector_num // self.SECTORS_PER_TRACK)
+        sector_in_track = logical_sector_num % self.SECTORS_PER_TRACK
+
+        # Pad data to block size if needed
+        if len(data) < self.BLOCK_SIZE:
+            data = data + bytes([0x1A] * (self.BLOCK_SIZE - len(data)))
+
+        for i in range(sectors_per_block):
+            current_sector = sector_in_track + i
+            current_track = track
+            while current_sector >= self.SECTORS_PER_TRACK:
+                current_sector -= self.SECTORS_PER_TRACK
+                current_track += 1
+            sector_data = data[i * self.SECTOR_SIZE:(i + 1) * self.SECTOR_SIZE]
+            self.write_sector(current_track, current_sector, sector_data)
+
+    def read_dir_entry(self, entry_num):
+        """Read a directory entry (32 bytes) by entry number."""
+        # Directory entries are in blocks 0 and 1
+        # Each block = 1024 bytes = 32 entries
+        block_num = entry_num // 32
+        offset_in_block = (entry_num % 32) * 32
+        block_data = self.read_block(block_num)
+        return bytes(block_data[offset_in_block:offset_in_block + 32])
+
+    def write_dir_entry(self, entry_num, entry_data):
+        """Write a directory entry (32 bytes) by entry number."""
+        block_num = entry_num // 32
+        offset_in_block = (entry_num % 32) * 32
+        block_data = bytearray(self.read_block(block_num))
+        block_data[offset_in_block:offset_in_block + 32] = entry_data[:32]
+        self.write_block(block_num, bytes(block_data))
+
+    def find_free_dir_entry(self):
+        """Find first free directory entry (starts with 0xE5).
+
+        Returns entry number (not byte offset).
+        """
+        for i in range(self.DIR_ENTRIES):
+            entry = self.read_dir_entry(i)
+            if entry[0] == 0xE5:
+                return i
+        return None
+
+    def find_max_block(self):
+        """Find highest used block number in directory.
+
+        Returns the highest block number in use, or 1 if no files exist
+        (blocks 0-1 are reserved for directory with 1KB blocks, 64 entries).
+        """
+        # Directory = 64 entries * 32 bytes = 2048 bytes = 2 blocks
+        max_block = 1
+        for i in range(self.DIR_ENTRIES):
+            entry = self.read_dir_entry(i)
+            if entry[0] != 0xE5:
+                # 8-bit block pointers for SSSD (16 pointers per entry)
+                for j in range(16):
+                    block = entry[16 + j]
+                    if block > max_block and block != 0:
+                        max_block = block
+        return max_block
+
+    def add_file(self, filename, file_data, sys_attr=False, user=0):
+        """Add a file to the disk image.
+
+        Args:
+            filename: Name of the file to add
+            file_data: File contents as bytes
+            sys_attr: If True, set the SYS attribute
+            user: User number (0-15)
+        """
+        # Parse filename (8.3 format)
+        name, ext = os.path.splitext(filename.upper())
+        name = name[:8].ljust(8)
+        ext = ext[1:4].ljust(3) if ext else '   '
+
+        num_records = (len(file_data) + 127) // 128
+        blocks_needed = (num_records + self.RECORDS_PER_BLOCK - 1) // self.RECORDS_PER_BLOCK
+
+        next_block = self.find_max_block() + 1
+
+        sys_flag = " [SYS]" if sys_attr else ""
+        user_flag = f" [U{user}]" if user != 0 else ""
+        print(f"Adding {filename}{sys_flag}{user_flag}: {len(file_data)} bytes, {num_records} records, {blocks_needed} blocks starting at {next_block}")
+
+        # Prepare extension bytes with optional SYS attribute
+        ext_bytes = ext.encode('ascii')
+        if sys_attr:
+            ext_bytes = bytes([ext_bytes[0], ext_bytes[1] | 0x80, ext_bytes[2]])
+
+        # Write file data to blocks first
+        for i in range(blocks_needed):
+            block_num = next_block + i
+            data_offset = i * self.BLOCK_SIZE
+            chunk = file_data[data_offset:data_offset + self.BLOCK_SIZE]
+            self.write_block(block_num, chunk)
+
+        # Create directory entries
+        # For SSSD: EXM=0, each extent = 128 records, 16 blocks max per entry
+        extent_num = 0
+        block_idx = 0
+
+        while block_idx < blocks_needed:
+            dir_entry_num = self.find_free_dir_entry()
+            if dir_entry_num is None:
+                print(f"No free directory entry for {filename} extent {extent_num}")
+                return False
+
+            entry = bytearray(32)
+            entry[0] = user  # User number
+            entry[1:9] = name.encode('ascii')
+            entry[9:12] = ext_bytes
+
+            # Get blocks for this extent (up to 16 for 8-bit pointers)
+            extent_blocks = []
+            for i in range(self.BLOCKS_PER_EXTENT):
+                if block_idx + i < blocks_needed:
+                    extent_blocks.append(next_block + block_idx + i)
+
+            # Calculate record count for this extent
+            if block_idx + len(extent_blocks) >= blocks_needed:
+                # Last extent - calculate remaining records
+                remaining_bytes = len(file_data) - (block_idx * self.BLOCK_SIZE)
+                extent_records = (remaining_bytes + 127) // 128
+            else:
+                # Full extent
+                extent_records = 128
+
+            entry[12] = extent_num & 0x1F  # Extent low
+            entry[13] = 0  # S1
+            entry[14] = (extent_num >> 5) & 0x3F  # S2/EH
+            entry[15] = min(extent_records, 128)
+
+            # Store 8-bit block pointers
+            for i, block in enumerate(extent_blocks):
+                entry[16 + i] = block & 0xFF
+
+            self.write_dir_entry(dir_entry_num, entry)
+
+            block_idx += len(extent_blocks)
+            extent_num += 1
+
+        return True
+
+    def list_files(self):
+        """List all files in the directory."""
+        files = {}
+        for i in range(self.DIR_ENTRIES):
+            entry = self.read_dir_entry(i)
+            user = entry[0]
+            if user != 0xE5 and user < 32:
+                # Mask off attribute bits from extension bytes
+                name_bytes = entry[1:9]
+                ext_bytes = bytes([b & 0x7F for b in entry[9:12]])
+                if not all(0x20 <= b <= 0x7E for b in name_bytes):
+                    continue
+                if not all(0x20 <= b <= 0x7E for b in ext_bytes):
+                    continue
+
+                name = name_bytes.decode('ascii').rstrip()
+                ext = ext_bytes.decode('ascii').rstrip()
+                extent_lo = entry[12]
+                extent_hi = entry[14]
+                extent = extent_lo + (extent_hi << 5)
+                records = entry[15]
+
+                fullname = f"{name}.{ext}" if ext else name
+                key = (user, fullname)
+
+                if key not in files:
+                    files[key] = {'extents': 0, 'records': 0, 'blocks': []}
+
+                files[key]['extents'] = max(files[key]['extents'], extent + 1)
+                if extent == files[key]['extents'] - 1:
+                    files[key]['records'] = extent * 128 + records
+
+                # 8-bit block pointers
+                for j in range(16):
+                    block = entry[16 + j]
+                    if block > 0:
+                        files[key]['blocks'].append(block)
+
+        return files
+
+    def delete_file(self, filename, user=0):
+        """Delete a file from the disk image."""
+        name, ext = os.path.splitext(filename.upper())
+        name = name[:8].ljust(8)
+        ext = ext[1:4].ljust(3) if ext else '   '
+
+        deleted_count = 0
+        for i in range(self.DIR_ENTRIES):
+            entry = self.read_dir_entry(i)
+            entry_user = entry[0]
+            if entry_user == user:
+                entry_name = bytes(entry[1:9]).decode('ascii')
+                entry_ext_bytes = bytes([b & 0x7F for b in entry[9:12]])
+                entry_ext = entry_ext_bytes.decode('ascii')
+                if entry_name == name and entry_ext == ext:
+                    # Mark entry as deleted
+                    deleted_entry = bytearray(entry)
+                    deleted_entry[0] = 0xE5
+                    self.write_dir_entry(i, deleted_entry)
+                    deleted_count += 1
+
+        return deleted_count
+
+    def extract_file(self, filename, user=0):
+        """Extract a file from the disk image.
+
+        Returns the file data as bytes, or None if not found.
+        """
+        name, ext = os.path.splitext(filename.upper())
+        name = name[:8].ljust(8)
+        ext = ext[1:4].ljust(3) if ext else '   '
+
+        # Collect all extents for this file
+        extents = {}
+        for i in range(self.DIR_ENTRIES):
+            entry = self.read_dir_entry(i)
+            entry_user = entry[0]
+            if entry_user == user:
+                # Mask off attribute bits from name bytes too (high bit can be set)
+                entry_name_bytes = bytes([b & 0x7F for b in entry[1:9]])
+                entry_ext_bytes = bytes([b & 0x7F for b in entry[9:12]])
+                try:
+                    entry_name = entry_name_bytes.decode('ascii')
+                    entry_ext = entry_ext_bytes.decode('ascii')
+                except UnicodeDecodeError:
+                    continue
+                if entry_name == name and entry_ext == ext:
+                    extent_lo = entry[12]
+                    extent_hi = entry[14]
+                    extent_num = extent_lo + (extent_hi << 5)
+                    records = entry[15]
+                    blocks = []
+                    # 8-bit block pointers
+                    for j in range(16):
+                        block = entry[16 + j]
+                        if block > 0:
+                            blocks.append(block)
+                    extents[extent_num] = (records, blocks)
+
+        if not extents:
+            return None
+
+        # Read data from blocks in extent order
+        file_data = bytearray()
+        for ext_num in sorted(extents.keys()):
+            records, blocks = extents[ext_num]
+            for block in blocks:
+                file_data.extend(self.read_block(block))
+
+        # Trim to actual size
+        last_ext = max(extents.keys())
+        total_records = last_ext * 128 + extents[last_ext][0]
+        actual_size = total_records * 128
+        return bytes(file_data[:actual_size])
+
+    def read_boot_area(self):
+        """Read the boot area (first 2 tracks) from the disk.
+
+        Boot tracks have no sector skew applied - they are read sequentially.
+        Returns 6656 bytes (2 tracks × 26 sectors × 128 bytes).
+        """
+        boot_size = self.BOOT_TRACKS * self.SECTORS_PER_TRACK * self.SECTOR_SIZE
+        result = bytearray()
+        for track in range(self.BOOT_TRACKS):
+            for sector in range(self.SECTORS_PER_TRACK):
+                result.extend(self.read_sector(track, sector))
+        return bytes(result)
+
+    def write_boot_area(self, data):
+        """Write data to the boot area (first 2 tracks) of the disk.
+
+        Boot tracks have no sector skew applied - they are written sequentially.
+        Data is padded or truncated to exactly 6656 bytes.
+        """
+        boot_size = self.BOOT_TRACKS * self.SECTORS_PER_TRACK * self.SECTOR_SIZE
+        # Pad or truncate to boot area size
+        if len(data) < boot_size:
+            data = data + bytes(boot_size - len(data))
+        elif len(data) > boot_size:
+            data = data[:boot_size]
+
+        offset = 0
+        for track in range(self.BOOT_TRACKS):
+            for sector in range(self.SECTORS_PER_TRACK):
+                sector_data = data[offset:offset + self.SECTOR_SIZE]
+                self.write_sector(track, sector, sector_data)
+                offset += self.SECTOR_SIZE
+
+
+class Hd1kDisk:
+    """Standard hd1k disk format (RomWBW compatible)."""
+
+    SECTOR_SIZE = SECTOR_SIZE_HD  # 512 bytes
+    SECTORS_PER_TRACK = 16
+    DIR_ENTRIES = 1024
+    BOOT_TRACKS = 2
+    DIR_START = BOOT_TRACKS * SECTORS_PER_TRACK * SECTOR_SIZE_HD  # 0x4000 (16KB)
+
+    def __init__(self, disk_data):
+        self.data = disk_data
+
+    def find_free_dir_entry(self):
+        """Find first free directory entry (starts with 0xE5)."""
+        for i in range(self.DIR_ENTRIES):
+            offset = self.DIR_START + (i * 32)
+            if self.data[offset] == 0xE5:
+                return offset
+        return None
+
+    def find_max_block(self):
+        """Find highest used block number in directory.
+
+        Returns the highest block number in use, or 7 if no files exist
+        (blocks 0-7 are reserved for directory).
+        """
+        # Blocks 0-7 are reserved for directory (32KB = 8 blocks at 4KB each)
+        max_block = 7
+        for i in range(self.DIR_ENTRIES):
+            offset = self.DIR_START + (i * 32)
+            if self.data[offset] != 0xE5:
+                for j in range(8):
+                    block = struct.unpack('<H', self.data[offset+16+j*2:offset+18+j*2])[0]
+                    if block > max_block and block < 0xFFFF:
+                        max_block = block
+        return max_block
+
+    def add_file(self, filename, file_data, sys_attr=False, user=0):
+        """Add a file to the disk image.
+
+        Args:
+            filename: Name of the file to add
+            file_data: File contents as bytes
+            sys_attr: If True, set the SYS attribute (makes file visible from any user area)
+            user: User number (0-15)
+        """
+        # Parse filename (8.3 format) - uppercase for CP/M compatibility
+        name, ext = os.path.splitext(filename.upper())
+        name = name[:8].ljust(8)
+        ext = ext[1:4].ljust(3) if ext else '   '
+
+        # Delete existing file with same name to avoid duplicates
+        cpm_filename = (name.rstrip() + '.' + ext.rstrip()).rstrip('.')
+        deleted = self.delete_file(cpm_filename, user)
+        if deleted:
+            print(f"  (replaced existing {cpm_filename})")
+
+        num_records = (len(file_data) + 127) // 128
+        records_per_block = BLOCK_SIZE // 128  # 32 records per 4KB block
+        blocks_needed = (num_records + records_per_block - 1) // records_per_block
+
+        next_block = self.find_max_block() + 1
+
+        sys_flag = " [SYS]" if sys_attr else ""
+        user_flag = f" [U{user}]" if user != 0 else ""
+        print(f"Adding {filename}{sys_flag}{user_flag}: {len(file_data)} bytes, {num_records} records, {blocks_needed} blocks starting at {next_block}")
+
+        # Prepare extension bytes with optional SYS attribute
+        ext_bytes = ext.encode('ascii')
+        if sys_attr:
+            ext_bytes = bytes([ext_bytes[0], ext_bytes[1] | 0x80, ext_bytes[2]])
+
+        # Write file data to blocks first
+        for i in range(blocks_needed):
+            block_num = next_block + i
+            block_offset = self.DIR_START + (block_num * BLOCK_SIZE)
+            data_offset = i * BLOCK_SIZE
+            chunk = file_data[data_offset:data_offset + BLOCK_SIZE]
+            if len(chunk) < BLOCK_SIZE:
+                chunk = chunk + bytes([0x1A] * (BLOCK_SIZE - len(chunk)))
+            self.data[block_offset:block_offset + BLOCK_SIZE] = chunk
+
+        # Create directory entries
+        # For hd1k with 4KB blocks and DSM > 255: EXM=1
+        # Each physical directory entry covers 2 logical extents = 256 records = 8 blocks
+        # EL field contains the last logical extent number within this physical extent
+        # RC field contains the record count in that last logical extent
+        exm = 1  # EXM=1 for hd1k format (4KB blocks, DSM > 255)
+        records_per_physical_extent = 128 * (exm + 1)  # 256 records
+        blocks_per_physical_extent = 8  # 8 block pointers per directory entry
+        physical_extent_num = 0
+        block_idx = 0
+
+        while block_idx < blocks_needed:
+            dir_offset = self.find_free_dir_entry()
+            if dir_offset is None:
+                print(f"No free directory entry for {filename} extent {physical_extent_num}")
+                return False
+
+            entry = bytearray(32)
+            entry[0] = user  # User number
+            entry[1:9] = name.encode('ascii')
+            entry[9:12] = ext_bytes
+
+            # Get blocks for this physical extent
+            extent_blocks = []
+            for i in range(blocks_per_physical_extent):
+                if block_idx + i < blocks_needed:
+                    extent_blocks.append(next_block + block_idx + i)
+
+            # Calculate which logical extent this ends on and the record count
+            records_before = block_idx * records_per_block
+            records_in_extent = len(extent_blocks) * records_per_block
+            records_covered = min(records_before + records_in_extent, num_records)
+            records_in_last_logical = ((records_covered - 1) % 128) + 1 if records_covered > 0 else 0
+
+            # Logical extent number within this physical extent (0 or 1 for EXM=1)
+            if records_covered > records_before + 128:
+                last_logical_extent = 1  # Extends into second logical extent
+            else:
+                last_logical_extent = 0
+
+            # Full extent number = physical_extent * (exm+1) + last_logical_extent
+            full_extent_num = physical_extent_num * (exm + 1) + last_logical_extent
+
+            entry[12] = full_extent_num & 0x1F  # Extent low (bits 0-4)
+            entry[13] = 0  # S1
+            entry[14] = (full_extent_num >> 5) & 0x3F  # S2/EH (bits 5-10)
+            entry[15] = records_in_last_logical  # RC = records in last logical extent
+
+            # Store block pointers
+            for i, block in enumerate(extent_blocks):
+                struct.pack_into('<H', entry, 16 + i*2, block)
+
+            self.data[dir_offset:dir_offset+32] = entry
+
+            block_idx += len(extent_blocks)
+            physical_extent_num += 1
+
+        return True
+
+    def list_files(self):
+        """List all files in the directory."""
+        files = {}
+        for i in range(self.DIR_ENTRIES):
+            offset = self.DIR_START + (i * 32)
+            user = self.data[offset]
+            if user != 0xE5 and user < 32:
+                # Validate filename - must be printable ASCII (0x20-0x7E)
+                # Mask off attribute bits (high bit) from extension bytes
+                name_bytes = self.data[offset+1:offset+9]
+                ext_bytes = bytes([b & 0x7F for b in self.data[offset+9:offset+12]])
+                if not all(0x20 <= b <= 0x7E for b in name_bytes):
+                    continue
+                if not all(0x20 <= b <= 0x7E for b in ext_bytes):
+                    continue
+
+                name = name_bytes.decode('ascii').rstrip()
+                ext = ext_bytes.decode('ascii').rstrip()
+                extent_lo = self.data[offset+12]
+                extent_hi = self.data[offset+14]
+                extent = extent_lo + (extent_hi << 5)
+                records = self.data[offset+15]
+
+                fullname = f"{name}.{ext}" if ext else name
+                key = (user, fullname)
+
+                if key not in files:
+                    files[key] = {'extents': 0, 'records': 0, 'blocks': []}
+
+                files[key]['extents'] = max(files[key]['extents'], extent + 1)
+                if extent == files[key]['extents'] - 1:
+                    files[key]['records'] = extent * 128 + records
+
+                for j in range(8):
+                    block = struct.unpack('<H', self.data[offset+16+j*2:offset+18+j*2])[0]
+                    if block > 0:
+                        files[key]['blocks'].append(block)
+
+        return files
+
+    def delete_file(self, filename, user=0):
+        """Delete a file from the disk image by marking its directory entries as empty."""
+        # Parse filename (8.3 format)
+        name, ext = os.path.splitext(filename.upper())
+        name = name[:8].ljust(8)
+        ext = ext[1:4].ljust(3) if ext else '   '
+
+        deleted_count = 0
+        for i in range(self.DIR_ENTRIES):
+            offset = self.DIR_START + (i * 32)
+            entry_user = self.data[offset]
+            if entry_user == user:
+                entry_name = bytes(self.data[offset+1:offset+9]).decode('ascii')
+                # Mask off attribute bits (high bit) from extension bytes
+                entry_ext_bytes = bytes([b & 0x7F for b in self.data[offset+9:offset+12]])
+                entry_ext = entry_ext_bytes.decode('ascii')
+                if entry_name == name and entry_ext == ext:
+                    # Mark entry as deleted
+                    self.data[offset] = 0xE5
+                    deleted_count += 1
+
+        return deleted_count
+
+    def extract_file(self, filename, user=0):
+        """Extract a file from the disk image.
+
+        Returns the file data as bytes, or None if not found.
+        """
+        # Parse filename (8.3 format)
+        name, ext = os.path.splitext(filename.upper())
+        name = name[:8].ljust(8)
+        ext = ext[1:4].ljust(3) if ext else '   '
+
+        # Collect all extents for this file
+        extents = {}  # extent_num -> (records, blocks)
+        for i in range(self.DIR_ENTRIES):
+            offset = self.DIR_START + (i * 32)
+            entry_user = self.data[offset]
+            if entry_user == user:
+                entry_name = bytes(self.data[offset+1:offset+9]).decode('ascii')
+                # Mask off attribute bits (high bit) from extension bytes
+                entry_ext_bytes = bytes([b & 0x7F for b in self.data[offset+9:offset+12]])
+                entry_ext = entry_ext_bytes.decode('ascii')
+                if entry_name == name and entry_ext == ext:
+                    extent_lo = self.data[offset+12]
+                    extent_hi = self.data[offset+14]
+                    extent_num = extent_lo + (extent_hi << 5)
+                    records = self.data[offset+15]
+                    blocks = []
+                    for j in range(8):
+                        block = struct.unpack('<H', self.data[offset+16+j*2:offset+18+j*2])[0]
+                        if block > 0:
+                            blocks.append(block)
+                    extents[extent_num] = (records, blocks)
+
+        if not extents:
+            return None
+
+        # Read data from blocks in extent order
+        file_data = bytearray()
+        for ext_num in sorted(extents.keys()):
+            records, blocks = extents[ext_num]
+            for block in blocks:
+                block_offset = self.DIR_START + (block * BLOCK_SIZE)
+                file_data.extend(self.data[block_offset:block_offset + BLOCK_SIZE])
+
+        # Trim to actual size based on last extent's record count
+        last_ext = max(extents.keys())
+        total_records = last_ext * 128 + extents[last_ext][0]
+        actual_size = total_records * 128
+        return bytes(file_data[:actual_size])
+
+    def read_boot_area(self):
+        """Read the boot area (first 2 tracks) from the disk.
+
+        Returns 16384 bytes (2 tracks × 16 sectors × 512 bytes).
+        No skew is applied to hard disk formats.
+        """
+        boot_size = self.BOOT_TRACKS * self.SECTORS_PER_TRACK * SECTOR_SIZE_HD
+        return bytes(self.data[:boot_size])
+
+    def write_boot_area(self, data):
+        """Write data to the boot area (first 2 tracks) of the disk.
+
+        Data is padded or truncated to exactly 16384 bytes.
+        No skew is applied to hard disk formats.
+        """
+        boot_size = self.BOOT_TRACKS * self.SECTORS_PER_TRACK * SECTOR_SIZE_HD
+        # Pad or truncate to boot area size
+        if len(data) < boot_size:
+            data = data + bytes(boot_size - len(data))
+        elif len(data) > boot_size:
+            data = data[:boot_size]
+        self.data[:boot_size] = data
+
+
+class ComboDisk:
+    """Combo disk with 1MB prefix."""
+
+    SECTOR_SIZE = SECTOR_SIZE_HD  # 512 bytes
+    SECTORS_PER_TRACK = 16
+    TRACK_SIZE = SECTOR_SIZE_HD * SECTORS_PER_TRACK
+    DIR_ENTRIES = 1024
+    BOOT_TRACKS = 2
+    PREFIX_SIZE = 1048576  # 1MB
+    SLICE_SIZE = 8388608   # 8MB
+
+    def __init__(self, disk_data):
+        self.data = disk_data
+        self.dir_offset = self.PREFIX_SIZE + (self.BOOT_TRACKS * self.TRACK_SIZE)
+
+    def find_free_dir_entry(self):
+        """Find first free directory entry (starts with 0xE5)."""
+        for i in range(self.DIR_ENTRIES):
+            entry_offset = self.dir_offset + (i * 32)
+            if self.data[entry_offset] == 0xE5:
+                return i
+        return -1
+
+    def get_used_blocks(self):
+        """Scan directory to find all used blocks."""
+        used = set(range(8))  # Directory blocks are always used
+        for i in range(self.DIR_ENTRIES):
+            entry_offset = self.dir_offset + (i * 32)
+            user = self.data[entry_offset]
+            if user != 0xE5 and user < 32:
+                for j in range(8):
+                    ptr_offset = entry_offset + 16 + (j * 2)
+                    block = struct.unpack('<H', self.data[ptr_offset:ptr_offset+2])[0]
+                    if block != 0:
+                        used.add(block)
+        return used
+
+    def find_free_block(self, used_blocks):
+        """Find first free block (skip blocks 0-7 used by directory)."""
+        for block in range(8, 2048):
+            if block not in used_blocks:
+                return block
+        return -1
+
+    def add_file(self, filename, file_data, user=0, sys_attr=False):
+        """Add a file to the disk image.
+
+        Args:
+            filename: Name of the file to add
+            file_data: File contents as bytes
+            user: User number (0-15)
+            sys_attr: If True, set the SYS attribute (makes file visible from any user area)
+        """
+        name, ext = os.path.splitext(filename.upper())
+        name = name[:8].ljust(8)
+        ext = ext[1:4].ljust(3) if ext else '   '
+
+        num_records = (len(file_data) + 127) // 128
+        num_blocks = (len(file_data) + BLOCK_SIZE - 1) // BLOCK_SIZE
+
+        used_blocks = self.get_used_blocks()
+
+        allocated_blocks = []
+        for _ in range(num_blocks):
+            block = self.find_free_block(used_blocks)
+            if block < 0:
+                print(f"Error: No free blocks for {filename}")
+                return False
+            allocated_blocks.append(block)
+            used_blocks.add(block)
+
+        # Write file data to blocks
+        for i, block in enumerate(allocated_blocks):
+            block_offset = self.PREFIX_SIZE + (block * BLOCK_SIZE)
+            start = i * BLOCK_SIZE
+            end = min(start + BLOCK_SIZE, len(file_data))
+            chunk = file_data[start:end]
+            if len(chunk) < BLOCK_SIZE:
+                chunk = chunk + bytes([0x1A] * (BLOCK_SIZE - len(chunk)))
+            self.data[block_offset:block_offset+BLOCK_SIZE] = chunk
+
+        # Create directory entries
+        blocks_per_extent = 8
+        extent_num = 0
+        block_idx = 0
+
+        # Prepare extension bytes with optional SYS attribute
+        ext_bytes = ext.encode('ascii')
+        if sys_attr:
+            ext_bytes = bytes([ext_bytes[0] | 0x80]) + ext_bytes[1:]
+
+        while block_idx < len(allocated_blocks):
+            dir_idx = self.find_free_dir_entry()
+            if dir_idx < 0:
+                print(f"Error: No free directory entry for {filename}")
+                return False
+
+            entry_offset = self.dir_offset + (dir_idx * 32)
+
+            entry = bytearray(32)
+            entry[0] = user
+            entry[1:9] = name.encode('ascii')
+            entry[9:12] = ext_bytes
+            entry[12] = extent_num & 0x1F
+            entry[13] = 0
+            entry[14] = (extent_num >> 5) & 0x3F
+
+            extent_blocks = allocated_blocks[block_idx:block_idx+blocks_per_extent]
+            if block_idx + blocks_per_extent >= len(allocated_blocks):
+                remaining = len(file_data) - (block_idx * BLOCK_SIZE)
+                extent_records = (remaining + 127) // 128
+            else:
+                extent_records = 128
+            entry[15] = min(extent_records, 128)
+
+            for i, block in enumerate(extent_blocks):
+                struct.pack_into('<H', entry, 16 + i*2, block)
+
+            self.data[entry_offset:entry_offset+32] = entry
+
+            block_idx += blocks_per_extent
+            extent_num += 1
+
+        sys_flag = " [SYS]" if sys_attr else ""
+        print(f"Added {filename}{sys_flag}: {len(file_data)} bytes, {num_blocks} blocks")
+        return True
+
+    def list_files(self):
+        """List all files in the directory."""
+        files = {}
+        for i in range(self.DIR_ENTRIES):
+            offset = self.dir_offset + (i * 32)
+            user = self.data[offset]
+            if user != 0xE5 and user < 32:
+                # Validate filename - must be printable ASCII (0x20-0x7E)
+                # Mask off attribute bits (high bit) from extension bytes
+                name_bytes = self.data[offset+1:offset+9]
+                ext_bytes = bytes([b & 0x7F for b in self.data[offset+9:offset+12]])
+                if not all(0x20 <= b <= 0x7E for b in name_bytes):
+                    continue
+                if not all(0x20 <= b <= 0x7E for b in ext_bytes):
+                    continue
+
+                name = name_bytes.decode('ascii').rstrip()
+                ext = ext_bytes.decode('ascii').rstrip()
+                extent_lo = self.data[offset+12]
+                extent_hi = self.data[offset+14]
+                extent = extent_lo + (extent_hi << 5)
+                records = self.data[offset+15]
+
+                fullname = f"{name}.{ext}" if ext else name
+                key = (user, fullname)
+
+                if key not in files:
+                    files[key] = {'extents': 0, 'records': 0, 'blocks': []}
+
+                files[key]['extents'] = max(files[key]['extents'], extent + 1)
+                if extent == files[key]['extents'] - 1:
+                    files[key]['records'] = extent * 128 + records
+
+                for j in range(8):
+                    block = struct.unpack('<H', self.data[offset+16+j*2:offset+18+j*2])[0]
+                    if block > 0:
+                        files[key]['blocks'].append(block)
+
+        return files
+
+    def delete_file(self, filename, user=0):
+        """Delete a file from the disk image by marking its directory entries as empty."""
+        # Parse filename (8.3 format)
+        name, ext = os.path.splitext(filename.upper())
+        name = name[:8].ljust(8)
+        ext = ext[1:4].ljust(3) if ext else '   '
+
+        deleted_count = 0
+        for i in range(self.DIR_ENTRIES):
+            offset = self.dir_offset + (i * 32)
+            entry_user = self.data[offset]
+            if entry_user == user:
+                entry_name = bytes(self.data[offset+1:offset+9]).decode('ascii')
+                # Mask off attribute bits (high bit) from extension bytes
+                entry_ext_bytes = bytes([b & 0x7F for b in self.data[offset+9:offset+12]])
+                entry_ext = entry_ext_bytes.decode('ascii')
+                if entry_name == name and entry_ext == ext:
+                    # Mark entry as deleted
+                    self.data[offset] = 0xE5
+                    deleted_count += 1
+
+        return deleted_count
+
+    def extract_file(self, filename, user=0):
+        """Extract a file from the disk image.
+
+        Returns the file data as bytes, or None if not found.
+        """
+        # Parse filename (8.3 format)
+        name, ext = os.path.splitext(filename.upper())
+        name = name[:8].ljust(8)
+        ext = ext[1:4].ljust(3) if ext else '   '
+
+        # Collect all extents for this file
+        extents = {}  # extent_num -> (records, blocks)
+        for i in range(self.DIR_ENTRIES):
+            offset = self.dir_offset + (i * 32)
+            entry_user = self.data[offset]
+            if entry_user == user:
+                entry_name = bytes(self.data[offset+1:offset+9]).decode('ascii')
+                # Mask off attribute bits (high bit) from extension bytes
+                entry_ext_bytes = bytes([b & 0x7F for b in self.data[offset+9:offset+12]])
+                entry_ext = entry_ext_bytes.decode('ascii')
+                if entry_name == name and entry_ext == ext:
+                    extent_lo = self.data[offset+12]
+                    extent_hi = self.data[offset+14]
+                    extent_num = extent_lo + (extent_hi << 5)
+                    records = self.data[offset+15]
+                    blocks = []
+                    for j in range(8):
+                        block = struct.unpack('<H', self.data[offset+16+j*2:offset+18+j*2])[0]
+                        if block > 0:
+                            blocks.append(block)
+                    extents[extent_num] = (records, blocks)
+
+        if not extents:
+            return None
+
+        # Read data from blocks in extent order
+        file_data = bytearray()
+        for ext_num in sorted(extents.keys()):
+            records, blocks = extents[ext_num]
+            for block in blocks:
+                block_offset = self.PREFIX_SIZE + (block * BLOCK_SIZE)
+                file_data.extend(self.data[block_offset:block_offset + BLOCK_SIZE])
+
+        # Trim to actual size based on last extent's record count
+        last_ext = max(extents.keys())
+        total_records = last_ext * 128 + extents[last_ext][0]
+        actual_size = total_records * 128
+        return bytes(file_data[:actual_size])
+
+    def read_boot_area(self):
+        """Read the boot area (first 2 tracks) from the first slice.
+
+        Returns 16384 bytes (2 tracks × 16 sectors × 512 bytes).
+        Boot area starts after the 1MB MBR prefix.
+        No skew is applied to hard disk formats.
+        """
+        boot_size = self.BOOT_TRACKS * self.TRACK_SIZE
+        start = self.PREFIX_SIZE
+        return bytes(self.data[start:start + boot_size])
+
+    def write_boot_area(self, data):
+        """Write data to the boot area (first 2 tracks) of the first slice.
+
+        Data is padded or truncated to exactly 16384 bytes.
+        Boot area starts after the 1MB MBR prefix.
+        No skew is applied to hard disk formats.
+        """
+        boot_size = self.BOOT_TRACKS * self.TRACK_SIZE
+        # Pad or truncate to boot area size
+        if len(data) < boot_size:
+            data = data + bytes(boot_size - len(data))
+        elif len(data) > boot_size:
+            data = data[:boot_size]
+        start = self.PREFIX_SIZE
+        self.data[start:start + boot_size] = data
+
+
+def cmd_create(args):
+    """Create a new empty formatted disk image."""
+    if os.path.exists(args.disk) and not args.force:
+        print(f"Error: {args.disk} already exists (use --force to overwrite)")
+        return 1
+
+    # Determine format to create
+    if getattr(args, 'sssd', False):
+        disk_data = create_sssd_disk()
+        size_desc = f"{len(disk_data) // 1024}KB SSSD (ibm-3740)"
+        fmt = 'sssd'
+    elif getattr(args, 'combo', False):
+        disk_data = create_hd1k_disk(combo=True)
+        size_desc = f"{len(disk_data) // 1048576}MB combo (6 slices)"
+        fmt = 'combo'
+    else:
+        disk_data = create_hd1k_disk(combo=False)
+        size_desc = f"{len(disk_data) // 1048576}MB hd1k"
+        fmt = 'hd1k'
+
+    # Verify the newly created disk
+    disk = get_disk_object(disk_data)
+    errors, warnings = verify_disk(disk, disk_data, fmt)
+    if errors:
+        print(f"VERIFY FAILED after create:")
+        for e in errors:
+            print(f"  {e}")
+        return 1
+
+    with open(args.disk, 'wb') as f:
+        f.write(disk_data)
+
+    print(f"Created {size_desc} disk: {args.disk}")
+    return 0
+
+
+def detect_disk_format(disk_data):
+    """Auto-detect disk format based on size and signatures.
+
+    Returns:
+        'sssd' for ibm-3740 (8" SSSD floppy)
+        'combo' for combo disk with MBR
+        'hd1k' for standard hd1k
+    """
+    size = len(disk_data)
+
+    # Check for SSSD (ibm-3740) format - ~256KB
+    if size == SSSD_SIZE or (243000 < size < 260000):
+        return 'sssd'
+
+    # Check for combo disk - MBR signature and partition type
+    if size >= HD1K_COMBO_SIZE:
+        if disk_data[0x1FE] == 0x55 and disk_data[0x1FF] == 0xAA:
+            if disk_data[0x1BE + 4] == 0x2E:  # RomWBW hd1k partition type
+                return 'combo'
+
+    # Default to hd1k for 8MB disks
+    if size == HD1K_SINGLE_SIZE:
+        return 'hd1k'
+
+    # Fallback - assume hd1k for larger disks, sssd for smaller
+    if size > 1000000:
+        return 'hd1k'
+    else:
+        return 'sssd'
+
+
+def get_disk_object(disk_data, format_hint=None):
+    """Get appropriate disk object for the format.
+
+    Args:
+        disk_data: The disk image data
+        format_hint: Optional format override. Values:
+            'sssd' - ibm-3740 with skew (default for 256KB disks)
+            'sssd-noskew' - ibm-3740 without skew
+            'hd1k' - standard hd1k format
+            'combo' - combo disk with MBR
+
+    Returns:
+        Disk object (SssdDisk, Hd1kDisk, or ComboDisk)
+    """
+    if format_hint:
+        fmt = format_hint
+    else:
+        fmt = detect_disk_format(disk_data)
+
+    if fmt == 'sssd':
+        return SssdDisk(disk_data, use_skew=True)
+    elif fmt == 'sssd-noskew':
+        return SssdDisk(disk_data, use_skew=False)
+    elif fmt == 'combo':
+        return ComboDisk(disk_data)
+    else:
+        return Hd1kDisk(disk_data)
+
+
+def is_combo_disk(disk_data):
+    """Auto-detect if disk is combo format by checking MBR signature and size."""
+    return detect_disk_format(disk_data) == 'combo'
+
+
+def get_format_hint(args, disk_data):
+    """Determine format hint from args and disk data."""
+    if getattr(args, 'sssd', False):
+        return 'sssd-noskew' if getattr(args, 'no_skew', False) else 'sssd'
+    elif getattr(args, 'combo', False):
+        return 'combo'
+    elif getattr(args, 'no_skew', False):
+        # Auto-detect but force no-skew for SSSD
+        if detect_disk_format(disk_data) == 'sssd':
+            return 'sssd-noskew'
+    return None
+
+
+def cmd_add(args):
+    """Add files to a disk image."""
+    with open(args.disk, 'rb') as f:
+        disk_data = bytearray(f.read())
+
+    fmt = detect_disk_format(disk_data)
+    disk = get_disk_object(disk_data, get_format_hint(args, disk_data))
+
+    sys_attr = getattr(args, 'sys', False)
+    user = getattr(args, 'user', 0)
+
+    for filepath in args.files:
+        filename = os.path.basename(filepath)
+        with open(filepath, 'rb') as f:
+            file_data = f.read()
+        if not disk.add_file(filename, file_data, sys_attr=sys_attr, user=user):
+            return 1
+
+        # Verify after each add
+        errors, warnings = verify_disk(disk, disk_data, fmt)
+        if errors:
+            print(f"VERIFY FAILED after adding {filename}:")
+            for e in errors:
+                print(f"  {e}")
+            return 1
+
+    with open(args.disk, 'wb') as f:
+        f.write(disk_data)
+
+    print(f"Successfully updated {args.disk}")
+    return 0
+
+
+def cmd_list(args):
+    """List files in a disk image."""
+    with open(args.disk, 'rb') as f:
+        disk_data = bytearray(f.read())
+
+    disk = get_disk_object(disk_data, get_format_hint(args, disk_data))
+    files = disk.list_files()
+
+    if not files:
+        print("No files found")
+        return 0
+
+    print(f"{'User':<5} {'Filename':<12} {'Size':>8} {'Blocks':>6}")
+    print("-" * 35)
+
+    for (user, name), info in sorted(files.items()):
+        size = info['records'] * 128
+        blocks = len(info['blocks'])
+        print(f"{user:<5} {name:<12} {size:>8} {blocks:>6}")
+
+    return 0
+
+
+def cmd_delete(args):
+    """Delete files from a disk image."""
+    with open(args.disk, 'rb') as f:
+        disk_data = bytearray(f.read())
+
+    fmt = detect_disk_format(disk_data)
+    disk = get_disk_object(disk_data, get_format_hint(args, disk_data))
+
+    # Get list of all files
+    files = disk.list_files()
+
+    any_deleted = False
+    for pattern in args.files:
+        pattern_83 = cpm_pattern_to_83(pattern)
+        matched = False
+
+        for (user, fullname), info in list(files.items()):
+            # Convert filename to 8.3 format for matching
+            if '.' in fullname:
+                name, ext = fullname.rsplit('.', 1)
+            else:
+                name, ext = fullname, ''
+            filename_83 = name.ljust(8) + ext.ljust(3)
+
+            if cpm_match(pattern_83, filename_83):
+                deleted = disk.delete_file(fullname, user)
+                if deleted > 0:
+                    print(f"Deleted {fullname} ({deleted} extent(s))")
+                    any_deleted = True
+                    matched = True
+                    del files[(user, fullname)]
+
+                    # Verify after each delete
+                    errors, warnings = verify_disk(disk, disk_data, fmt)
+                    if errors:
+                        print(f"VERIFY FAILED after deleting {fullname}:")
+                        for e in errors:
+                            print(f"  {e}")
+                        return 1
+
+        if not matched:
+            print(f"No files matching: {pattern}")
+
+    if any_deleted:
+        with open(args.disk, 'wb') as f:
+            f.write(disk_data)
+        print(f"Successfully updated {args.disk}")
+
+    return 0
+
+
+def cmd_extract(args):
+    """Extract files from a disk image."""
+    with open(args.disk, 'rb') as f:
+        disk_data = bytearray(f.read())
+
+    disk = get_disk_object(disk_data, get_format_hint(args, disk_data))
+
+    user = getattr(args, 'user', 0)
+    output_dir = getattr(args, 'output', '.')
+
+    for filename in args.files:
+        file_data = disk.extract_file(filename, user=user)
+        if file_data is None:
+            print(f"File not found: {filename}")
+            return 1
+
+        # Determine output path
+        out_name = os.path.basename(filename).lower()
+        out_path = os.path.join(output_dir, out_name)
+
+        with open(out_path, 'wb') as f:
+            f.write(file_data)
+        print(f"Extracted {filename} -> {out_path} ({len(file_data)} bytes)")
+
+    return 0
+
+
+def cmd_read_boot(args):
+    """Read boot area from disk image to a file."""
+    with open(args.disk, 'rb') as f:
+        disk_data = bytearray(f.read())
+
+    disk = get_disk_object(disk_data, get_format_hint(args, disk_data))
+    boot_data = disk.read_boot_area()
+
+    with open(args.output, 'wb') as f:
+        f.write(boot_data)
+
+    fmt = detect_disk_format(disk_data)
+    print(f"Read {len(boot_data)} bytes boot area from {args.disk} ({fmt}) -> {args.output}")
+    return 0
+
+
+def cmd_write_boot(args):
+    """Write boot area to disk image from a file."""
+    with open(args.disk, 'rb') as f:
+        disk_data = bytearray(f.read())
+
+    disk = get_disk_object(disk_data, get_format_hint(args, disk_data))
+    fmt = detect_disk_format(disk_data)
+
+    with open(args.input, 'rb') as f:
+        file_data = f.read()
+
+    sector_size = disk.SECTOR_SIZE
+    total_boot_sectors = disk.BOOT_TRACKS * disk.SECTORS_PER_TRACK
+    start_sector = getattr(args, 'sector', 0) or 0
+    length_sectors = getattr(args, 'length', None)
+
+    # Validate start sector
+    if start_sector < 0 or start_sector >= total_boot_sectors:
+        print(f"Error: sector {start_sector} out of range (0-{total_boot_sectors - 1})")
+        return 1
+
+    # Calculate how many sectors the file needs
+    file_sectors = (len(file_data) + sector_size - 1) // sector_size
+
+    # If length specified, pad or check bounds
+    if length_sectors is not None:
+        if length_sectors < file_sectors:
+            print(f"Error: file needs {file_sectors} sectors but length is only {length_sectors}")
+            return 1
+        # Pad file to specified length
+        target_size = length_sectors * sector_size
+        file_data = file_data + bytes(target_size - len(file_data))
+        file_sectors = length_sectors
+
+    # Check if it fits in boot area
+    if start_sector + file_sectors > total_boot_sectors:
+        print(f"Error: {file_sectors} sector(s) at sector {start_sector} exceeds boot area ({total_boot_sectors} sectors)")
+        return 1
+
+    # Read current boot area, overlay file data, write back
+    boot_area = bytearray(disk.read_boot_area())
+    offset = start_sector * sector_size
+    # Pad file_data to sector boundary
+    if len(file_data) % sector_size != 0:
+        file_data = file_data + bytes(sector_size - (len(file_data) % sector_size))
+    boot_area[offset:offset + len(file_data)] = file_data
+    disk.write_boot_area(bytes(boot_area))
+
+    with open(args.disk, 'wb') as f:
+        f.write(disk_data)
+
+    if length_sectors is not None:
+        print(f"Wrote {len(file_data)} bytes ({file_sectors} sectors) to sector {start_sector} of {args.disk} ({fmt})")
+    else:
+        print(f"Wrote {len(file_data)} bytes to sector {start_sector} of {args.disk} ({fmt})")
+    return 0
+
+
+def verify_disk(disk, disk_data, fmt):
+    """Verify disk image consistency.
+
+    Checks:
+    1. Extent numbering: if extent N exists, extents 0..N-1 must exist
+    2. Block allocation: no block used by more than one file
+    3. Block range: all blocks within valid disk bounds
+
+    Note: CP/M random I/O can create sparse files with holes (block ptr = 0),
+    so zero block pointers in the middle of an extent are allowed.
+
+    Returns:
+        (errors, warnings) - lists of error/warning messages
+    """
+    errors = []
+    warnings = []
+
+    # Determine format-specific parameters
+    if fmt == 'sssd':
+        dir_entries = SSSD_DIR_ENTRIES
+        block_size = SSSD_BLOCK_SIZE
+        blocks_per_extent = 16  # 8-bit pointers
+        pointer_size = 1
+        # Calculate max block: (disk_size - boot_tracks) / block_size
+        data_start = SSSD_BOOT_TRACKS * SSSD_SECTORS_PER_TRACK * SSSD_SECTOR_SIZE
+        max_block = (len(disk_data) - data_start) // block_size
+        dir_blocks = 2  # 64 entries * 32 bytes = 2KB = 2 blocks
+    else:
+        dir_entries = 1024
+        block_size = BLOCK_SIZE
+        blocks_per_extent = 8  # 16-bit pointers
+        pointer_size = 2
+        max_block = (len(disk_data) - 16384) // block_size  # After boot tracks
+        dir_blocks = 8  # 1024 entries * 32 bytes = 32KB = 8 blocks
+
+    # Collect all directory entries by file
+    files = {}  # (user, name) -> {extent_num: (dir_entry_idx, blocks)}
+    block_usage = {}  # block_num -> [(user, name, extent, entry_idx), ...]
+
+    for i in range(dir_entries):
+        if fmt == 'sssd':
+            entry = disk.read_dir_entry(i)
+        else:
+            offset = disk.DIR_START + (i * 32)
+            entry = bytes(disk_data[offset:offset + 32])
+
+        user = entry[0]
+        if user == 0xE5:
+            continue  # Deleted entry - OK
+
+        # Check for garbage in user byte
+        if user >= 32:
+            # Not deleted and not valid user - garbage
+            errors.append(f"Entry {i}: Invalid user byte 0x{user:02X} (expected 0-31 or 0xE5)")
+            continue
+
+        # Parse filename (mask attribute bits)
+        name_bytes = bytes([b & 0x7F for b in entry[1:9]])
+        ext_bytes = bytes([b & 0x7F for b in entry[9:12]])
+
+        # Check for non-printable characters in filename
+        has_garbage = False
+        for j, b in enumerate(name_bytes):
+            if b != 0x20 and (b < 0x21 or b > 0x7E):
+                errors.append(f"Entry {i}: Garbage char 0x{b:02X} at name position {j}")
+                has_garbage = True
+        for j, b in enumerate(ext_bytes):
+            if b != 0x20 and (b < 0x21 or b > 0x7E):
+                errors.append(f"Entry {i}: Garbage char 0x{b:02X} at ext position {j}")
+                has_garbage = True
+
+        if has_garbage:
+            continue
+
+        try:
+            name = name_bytes.decode('ascii').rstrip()
+            ext = ext_bytes.decode('ascii').rstrip()
+        except UnicodeDecodeError:
+            errors.append(f"Entry {i}: Invalid filename bytes")
+            continue
+
+        fullname = f"{name}.{ext}" if ext else name
+        key = (user, fullname)
+
+        # Parse extent number
+        extent_lo = entry[12] & 0x1F
+        extent_hi = entry[14] & 0x3F
+        extent_num = extent_lo + (extent_hi << 5)
+
+        # Collect blocks from this entry
+        blocks = []
+        for j in range(blocks_per_extent):
+            if pointer_size == 1:
+                block = entry[16 + j]
+            else:
+                block = struct.unpack('<H', entry[16 + j*2:18 + j*2])[0]
+
+            if block > 0:
+                blocks.append(block)
+
+                # Track block usage
+                if block not in block_usage:
+                    block_usage[block] = []
+                block_usage[block].append((user, fullname, extent_num, i))
+
+                # Check block range
+                if block >= max_block:
+                    errors.append(f"U{user}:{fullname} extent {extent_num}: "
+                                  f"block {block} exceeds max ({max_block})")
+
+        # Store extent info
+        if key not in files:
+            files[key] = {}
+        if extent_num in files[key]:
+            errors.append(f"U{user}:{fullname}: duplicate extent {extent_num} "
+                          f"(entries {files[key][extent_num][0]} and {i})")
+        files[key][extent_num] = (i, blocks)
+
+    # Check extent numbering
+    # For EXM=0: extents are 0, 1, 2, 3, ... (each entry = 1 logical extent)
+    # For EXM=1: extents are 0 or 1, 2 or 3, 4 or 5, ... (each entry = 2 logical extents)
+    # The extent number is the LAST logical extent in that physical extent
+    # So with EXM=1, extent 1 covers logical extents 0-1, extent 3 covers 2-3, etc.
+    exm = 1 if fmt != 'sssd' else 0  # hd1k has EXM=1, SSSD has EXM=0
+
+    for (user, fullname), extents in files.items():
+        if not extents:
+            continue
+
+        # Group extents by physical extent
+        # Physical extent N covers logical extents N*(exm+1) to N*(exm+1)+exm
+        physical_extents = set()
+        for ext_num in extents.keys():
+            phys_ext = ext_num // (exm + 1)
+            physical_extents.add(phys_ext)
+
+        # Check that physical extents are contiguous from 0
+        if physical_extents:
+            max_phys = max(physical_extents)
+            for n in range(max_phys):
+                if n not in physical_extents:
+                    errors.append(f"U{user}:{fullname}: missing physical extent {n} "
+                                  f"(has physical extent {max_phys})")
+
+    # Check for blocks used by multiple files
+    for block, usages in block_usage.items():
+        if len(usages) > 1:
+            usage_strs = [f"U{u}:{f} ext{e}" for u, f, e, _ in usages]
+            errors.append(f"Block {block} used by multiple files: {', '.join(usage_strs)}")
+
+        # Check if block is in directory area (reserved)
+        if block < dir_blocks:
+            for u, f, e, entry_idx in usages:
+                errors.append(f"U{u}:{f} extent {e}: block {block} overlaps directory area")
+
+    return errors, warnings
+
+
+def cmd_verify(args):
+    """Verify disk image consistency."""
+    with open(args.disk, 'rb') as f:
+        disk_data = bytearray(f.read())
+
+    fmt = detect_disk_format(disk_data)
+    disk = get_disk_object(disk_data, get_format_hint(args, disk_data))
+
+    print(f"Verifying {args.disk} ({fmt} format, {len(disk_data)} bytes)")
+
+    errors, warnings = verify_disk(disk, disk_data, fmt)
+
+    # Also list file count and block usage
+    files = disk.list_files()
+    total_files = len(files)
+    total_blocks = sum(len(info['blocks']) for info in files.values())
+
+    print(f"Files: {total_files}, Blocks used: {total_blocks}")
+
+    if warnings:
+        print(f"\nWarnings ({len(warnings)}):")
+        for w in warnings:
+            print(f"  {w}")
+
+    if errors:
+        print(f"\nErrors ({len(errors)}):")
+        for e in errors:
+            print(f"  {e}")
+        return 1
+
+    print("\nDisk image OK")
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='CP/M disk image utility',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__
+    )
+
+    subparsers = parser.add_subparsers(dest='command', required=True)
+
+    # Create command
+    create_parser = subparsers.add_parser('create', help='Create new empty disk image')
+    create_group = create_parser.add_mutually_exclusive_group()
+    create_group.add_argument('--sssd', action='store_true',
+                              help='Create SSSD (ibm-3740) format (250KB)')
+    create_group.add_argument('--combo', action='store_true',
+                              help='Create combo format (51MB) instead of single hd1k (8MB)')
+    create_parser.add_argument('--no-skew', action='store_true',
+                               help='SSSD: create without sector interleave (for emulators)')
+    create_parser.add_argument('--force', '-f', action='store_true',
+                               help='Overwrite existing file')
+    create_parser.add_argument('disk', help='Disk image file to create')
+    create_parser.set_defaults(func=cmd_create)
+
+    # Add command
+    add_parser = subparsers.add_parser('add', help='Add files to disk image')
+    add_format = add_parser.add_mutually_exclusive_group()
+    add_format.add_argument('--sssd', action='store_true',
+                            help='Disk is SSSD (ibm-3740) format')
+    add_format.add_argument('--combo', action='store_true',
+                            help='Disk is combo format (1MB prefix)')
+    add_parser.add_argument('--no-skew', action='store_true',
+                           help='Disable sector skew (SSSD only)')
+    add_parser.add_argument('--sys', '-s', action='store_true',
+                           help='Set SYS attribute on files (makes visible from any user area)')
+    add_parser.add_argument('--user', '-u', type=int, default=0,
+                           help='User number for files (0-15, default 0)')
+    add_parser.add_argument('disk', help='Disk image file')
+    add_parser.add_argument('files', nargs='+', help='Files to add')
+    add_parser.set_defaults(func=cmd_add)
+
+    # List command
+    list_parser = subparsers.add_parser('list', help='List files in disk image')
+    list_format = list_parser.add_mutually_exclusive_group()
+    list_format.add_argument('--sssd', action='store_true',
+                             help='Disk is SSSD (ibm-3740) format')
+    list_format.add_argument('--combo', action='store_true',
+                             help='Disk is combo format (1MB prefix)')
+    list_parser.add_argument('--no-skew', action='store_true',
+                             help='Disable sector skew (SSSD only)')
+    list_parser.add_argument('disk', help='Disk image file')
+    list_parser.set_defaults(func=cmd_list)
+
+    # Delete command
+    delete_parser = subparsers.add_parser('delete', help='Delete files from disk image')
+    delete_format = delete_parser.add_mutually_exclusive_group()
+    delete_format.add_argument('--sssd', action='store_true',
+                               help='Disk is SSSD (ibm-3740) format')
+    delete_format.add_argument('--combo', action='store_true',
+                               help='Disk is combo format (1MB prefix)')
+    delete_parser.add_argument('--no-skew', action='store_true',
+                               help='Disable sector skew (SSSD only)')
+    delete_parser.add_argument('disk', help='Disk image file')
+    delete_parser.add_argument('files', nargs='+', help='Files to delete')
+    delete_parser.set_defaults(func=cmd_delete)
+
+    # Extract command
+    extract_parser = subparsers.add_parser('extract', help='Extract files from disk image')
+    extract_format = extract_parser.add_mutually_exclusive_group()
+    extract_format.add_argument('--sssd', action='store_true',
+                                help='Disk is SSSD (ibm-3740) format')
+    extract_format.add_argument('--combo', action='store_true',
+                                help='Disk is combo format (1MB prefix)')
+    extract_parser.add_argument('--no-skew', action='store_true',
+                                help='Disable sector skew (SSSD only)')
+    extract_parser.add_argument('--user', '-u', type=int, default=0,
+                                help='User number to extract from (0-15, default 0)')
+    extract_parser.add_argument('--output', '-o', default='.',
+                                help='Output directory (default: current directory)')
+    extract_parser.add_argument('disk', help='Disk image file')
+    extract_parser.add_argument('files', nargs='+', help='Files to extract')
+    extract_parser.set_defaults(func=cmd_extract)
+
+    # Read-boot command
+    read_boot_parser = subparsers.add_parser('read-boot', help='Read boot area from disk image')
+    read_boot_format = read_boot_parser.add_mutually_exclusive_group()
+    read_boot_format.add_argument('--sssd', action='store_true',
+                                  help='Disk is SSSD (ibm-3740) format')
+    read_boot_format.add_argument('--combo', action='store_true',
+                                  help='Disk is combo format (1MB prefix)')
+    read_boot_parser.add_argument('--no-skew', action='store_true',
+                                  help='Disable sector skew (SSSD only)')
+    read_boot_parser.add_argument('disk', help='Disk image file')
+    read_boot_parser.add_argument('output', help='Output file for boot area')
+    read_boot_parser.set_defaults(func=cmd_read_boot)
+
+    # Write-boot command
+    write_boot_parser = subparsers.add_parser('write-boot', help='Write boot area to disk image')
+    write_boot_format = write_boot_parser.add_mutually_exclusive_group()
+    write_boot_format.add_argument('--sssd', action='store_true',
+                                   help='Disk is SSSD (ibm-3740) format')
+    write_boot_format.add_argument('--combo', action='store_true',
+                                   help='Disk is combo format (1MB prefix)')
+    write_boot_parser.add_argument('--no-skew', action='store_true',
+                                   help='Disable sector skew (SSSD only)')
+    write_boot_parser.add_argument('disk', help='Disk image file')
+    write_boot_parser.add_argument('input', help='Input file containing boot area data')
+    write_boot_parser.add_argument('sector', nargs='?', type=int, default=0,
+                                   help='Starting sector in boot area (default: 0)')
+    write_boot_parser.add_argument('length', nargs='?', type=int, default=None,
+                                   help='Length in sectors (pads with zeros if file is shorter)')
+    write_boot_parser.set_defaults(func=cmd_write_boot)
+
+    # Verify command
+    verify_parser = subparsers.add_parser('verify', help='Verify disk image consistency')
+    verify_format = verify_parser.add_mutually_exclusive_group()
+    verify_format.add_argument('--sssd', action='store_true',
+                               help='Disk is SSSD (ibm-3740) format')
+    verify_format.add_argument('--combo', action='store_true',
+                               help='Disk is combo format (1MB prefix)')
+    verify_parser.add_argument('--no-skew', action='store_true',
+                               help='Disable sector skew (SSSD only)')
+    verify_parser.add_argument('disk', help='Disk image file')
+    verify_parser.set_defaults(func=cmd_verify)
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return 0
+
+    args = parser.parse_args()
+    return args.func(args)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
