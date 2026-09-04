@@ -25,12 +25,19 @@ ZIP="$DLDIR/RomWBW-v$VER-Package.zip"
 
 mkdir -p "$DLDIR"
 
+# Download to a .part and only promote it once the archive tests clean.  The
+# previous version guarded the whole download with [ ! -f "$ZIP" ], so a killed
+# run left a truncated zip that was never resumed or re-fetched - and on a
+# first fetch, where no hash is recorded yet, the hash OF THE TRUNCATED FILE
+# was written into versions/<ver>/version.json as the authoritative pin.
 if [ ! -f "$ZIP" ]; then
     echo "Downloading RomWBW v$VER (this is ~200MB)"
     echo "  $URL"
-    # -C - resumes a partial file; without it a killed run leaves a truncated
-    # zip that unzip reports as corrupt rather than as incomplete.
-    curl -fL --retry 3 --retry-delay 2 -C - -o "$ZIP" "$URL"
+    curl -fL --retry 3 --retry-delay 2 -C - -o "$ZIP.part" "$URL"
+    unzip -tqq "$ZIP.part" >/dev/null 2>&1 ||
+        die "the archive downloaded for v$VER does not test clean.
+       Left at $ZIP.part; delete it and re-run."
+    mv "$ZIP.part" "$ZIP"
 fi
 
 GOT="$(sha256of "$ZIP")"

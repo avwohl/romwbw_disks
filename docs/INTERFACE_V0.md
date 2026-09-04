@@ -22,53 +22,82 @@ documents, their field names, and their meanings. Documented in
 [CATALOG_SCHEMA.md](CATALOG_SCHEMA.md).
 
 **2. The asset naming convention.** `<id>-v0-<romwbw-version>.<ext>`, on a
-release tag named `v0-romwbw-<romwbw-version>`. Every published filename
-carries both versions, so a client can hold two RomWBW generations in one flat
-download directory without collision — which none of them can do today.
+release tag named `v0-romwbw-<romwbw-version>`. Every asset on a version tag
+carries both versions in its name, so a client can hold two RomWBW generations
+in one flat download directory without collision — which none of them can do
+today. The one exception is the entry point: `index-v0.json`, on the
+`catalog-v0` tag, spans every RomWBW version and so carries only the interface
+version.
 
 **3. The HBIOS host-extension ABI.** The private function block the CP/M-side
-helpers `W8.COM` and `R8.COM` call, which RomWBW itself knows nothing about:
+helpers `W8.COM` and `R8.COM` call, which RomWBW itself knows nothing about,
+is `0xE1`–`0xEA`. Two standard RomWBW functions are listed alongside it below
+because the emulator's dispatcher handles them on the same path, and because
+`HBF_SYSVER` is what a guest CBIOS compares its own version against:
 
 | Function | Code | Purpose |
 |---|---|---|
-| `HBF_EXT` / `HBF_EXTSLICE` | `0xE0` | extended slice access |
+| `HBF_EXT` / `HBF_EXTSLICE` | `0xE0` | extended slice access — **standard RomWBW** (`BF_EXTSLICE` in upstream `Source/HBIOS/hbios.inc`), not part of the private block |
 | `HBF_HOST_OPEN_R` | `0xE1` | open a host file for reading |
 | `HBF_HOST_OPEN_W` | `0xE2` | open a host file for writing |
-| `HBF_HOST_READ` | `0xE3` | read from the open host file |
-| `HBF_HOST_WRITE` | `0xE4` | write to the open host file |
+| `HBF_HOST_READ` | `0xE3` | read a byte from the open host file |
+| `HBF_HOST_WRITE` | `0xE4` | write a byte to the open host file |
 | `HBF_HOST_CLOSE` | `0xE5` | close the open host file |
-| `HBF_HOST_MODE` | `0xE6` | set transfer mode |
-| `HBF_HOST_GETARG` | `0xE7` | fetch a host-supplied argument |
-| `HBF_HOST_GETNAME` | `0xE8` | fetch the host-supplied filename |
+| `HBF_HOST_MODE` | `0xE6` | get or set transfer mode |
+| `HBF_HOST_GETARG` | `0xE7` | fetch a host-supplied command-line argument |
+| `HBF_HOST_GETNAME` | `0xE8` | fetch the effective host write path |
 | `HBF_HOST_CAPS` | `0xE9` | capability bitmask (see below) |
-| `HBF_HOST_GETRNAME` | `0xEA` | fetch the host-supplied read filename |
-| `HBF_SYSVER` | `0xF1` | RomWBW version the emulator reports |
+| `HBF_HOST_GETRNAME` | `0xEA` | fetch the effective host read path |
+| `HBF_SYSVER` | `0xF1` | RomWBW version the emulator reports — **standard RomWBW** (`BF_SYSVER`), not part of the private block |
 
-Dispatch is `OUT (0xEF),A` after loading `B` with the function number; the
-emulator also uses `0xEC` for bank copy, `0xED` for bank call and `0xEE` for
-signalling. `HOST_PATH_MAX` is 256.
+Those names and codes are the emulator's, from
+`romwbw_emu/src/hbios_dispatch.h:131-179`. Of the private block, `W8.COM` uses
+`0xE2`, `0xE4`, `0xE5`, `0xE8` and `0xE9`, and `R8.COM` uses `0xE1`, `0xE3`,
+`0xE5` and `0xEA`; `0xE6` and `0xE7` are there for other guest programs.
+
+A guest loads `B` with the function number and executes `RST 08`. The page-zero
+vector jumps to the bank-0 proxy at `0xFFF0` (`src/emu_hbios.asm:64-66`), which
+does `OUT (0xEF),A` — and that `OUT` is what the emulator traps
+(`romwbw_emu/src/hbios_cpu.cc:125`). The emulator also uses `0xEC` for bank
+copy, `0xED` for bank call and `0xEE` for signalling
+(`src/emu_hbios.asm:45-48`, `romwbw_emu/src/hbios_cpu.cc:71,106,120`).
+`HOST_PATH_MAX` is 256 (`romwbw_emu/src/hbios_dispatch.h:210`).
 
 ### Capabilities, not a version number, inside the ABI
 
 Within v0 the ABI grew by accretion — `0xE8`, then `0xE9`, then `0xEA` — and
 compatibility is negotiated per call: an emulator that predates a function
-answers `A = 0xFF` from its unknown-function path. The one real negotiation is
-`HBF_HOST_CAPS`:
+answers with `A` nonzero from its unknown-function path. Do not test for a
+specific value there. Unknown functions in `0xE0`–`0xEF` reach
+`HBIOSDispatch::handleEXT`, whose default arm sets `HBR_NOFUNC`
+(`romwbw_emu/src/hbios_dispatch.cc:2705`), and `HBR_NOFUNC` is `-3`
+(`romwbw_emu/src/hbios_dispatch.h:30`), so it arrives in `A` as `0xFD`, not
+`0xFF`. `0xFF` is a *different* answer: it is `HBR_FAILED`, which `0xE8` and
+`0xEA` also return when the call exists but no file is open. Both are nonzero,
+which is exactly why the guest tests only for nonzero. The one real negotiation
+is `HBF_HOST_CAPS`:
 
     EMU_HOST_CAP_SAFE_PATHS = 0x01   a guest path is never used destructively
 
-`W8.COM` probes it before it hands a host path to the emulator and refuses if
-the bit is clear. The probe assembles to three bytes, `06 E9 CF`
-(`ld b,0E9h` / `rst 8`), and both `tools/build_utils.sh` and
-`tools/verify_catalog.py` assert those bytes are present in every published
-`w8.com`. That check catches something no hash can: a `.COM` that is
-syntactically valid and semantically obsolete.
+(`romwbw_emu/src/emu_io.h:452`.) `W8.COM` probes it before it hands a host path
+to the emulator and refuses if the bit is clear — and it refuses on `A <> 0`
+first, whatever the nonzero value (`src/w8.asm:344-350`). The probe assembles to
+three bytes, `06 E9 CF` (`ld b,0E9h` / `rst 8`). `tools/build_utils.sh` asserts
+those exact bytes are in the freshly linked `w8.com` and refuses to continue
+otherwise, and `tools/verify_catalog.py` re-asserts them for every published
+image whose catalog entry claims `host_transfer` — today only `hd1k_combo`,
+in both published versions. The verifier reads the `w8.com` out of the
+image's CP/M directory and searches *that*, not the whole image: three bytes
+turn up somewhere in 51 MB by chance, so an image-wide search would pass on a
+`w8.com` that had lost the probe entirely. That check catches something no hash
+can: a `.COM` that is syntactically valid and semantically obsolete.
 
 Keep that pattern. A capability bit says what an implementation *does*; a
 version number says what it *claims*. On the host side the same discipline is
 enforced by leaving `emu_host_path_caps()` declared but undefined in
-`emu_io.h`, so a port that has not implemented it fails to **link** rather than
-silently asserting a guarantee it does not make.
+`emu_io.h` (`romwbw_emu/src/emu_io.h:454`), so a port that has not implemented
+it fails to **link** rather than silently asserting a guarantee it does not
+make.
 
 ## What v0 does not cover
 
@@ -89,8 +118,9 @@ A client can *fetch* two RomWBW versions today. It cannot *run* both.
 `emu_validate_rom_hcb` in `romwbw_emu/src/emu_init.cc:52-60` compares the
 loaded ROM's HCB bytes at `0x105`/`0x106` against the compile-time
 `ROMWBW_PIN_VER_BYTE` / `ROMWBW_PIN_UPD_BYTE` from `src/romwbw_pin.h`, and
-returns a refusal that `emu_load_rom` turns into a failed load. A binary
-pinned to 3.5.1 physically cannot load a 3.6.0 ROM.
+returns a refusal that `emu_load_rom` turns into a failed load. `romwbw_emu`'s
+`ROMWBW_PIN_STR` is `"3.5.1"` today, so the binary physically cannot load a
+3.6.0 ROM.
 
 So until `romwbw_emu` makes the pin runtime state read from the loaded ROM,
 "pick a RomWBW version" means "the client filters the index down to the one

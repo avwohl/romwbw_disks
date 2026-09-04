@@ -72,6 +72,21 @@ def diskinfo(path, diskdef):
     return json.loads(out)
 
 
+def content_digest(rom_entries, disk_entries):
+    """Hash of what a catalog actually offers: (filename, sha256) pairs.
+
+    sorted(), not sort_keys=. sort_keys only orders DICT keys, and this payload
+    is a list of lists - so without the explicit sort, merely reordering
+    entries in versions/<ver>/disks.json changed the digest and bumped the
+    generation, which on iOS deletes every downloaded image. Reordering a
+    manifest must be a no-op.
+    """
+    payload = json.dumps(sorted(
+        [[e["filename"], e["sha256"]] for e in rom_entries]
+        + [[e["filename"], e["sha256"]] for e in disk_entries])).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
 def catalog_generation(ver, disk_entries, rom_entries):
     """A monotonic integer that changes only when the artifacts change.
 
@@ -85,11 +100,12 @@ def catalog_generation(ver, disk_entries, rom_entries):
     not a catalog bump; without that separation a user toggling
     3.5.1 -> 3.6.0 -> 3.5.1 would have their library deleted twice.
     """
-    payload = json.dumps(
-        [[e["filename"], e["sha256"]] for e in rom_entries]
-        + [[e["filename"], e["sha256"]] for e in disk_entries],
-        sort_keys=True).encode()
-    digest = hashlib.sha256(payload).hexdigest()
+    # sorted(), not sort_keys=. sort_keys only orders DICT keys, and this
+    # payload is a list of lists - so without the explicit sort, merely
+    # reordering entries in versions/<ver>/disks.json changed the digest and
+    # bumped the generation, which on iOS deletes every downloaded image.
+    # Reordering a manifest must be a no-op.
+    digest = content_digest(rom_entries, disk_entries)
 
     path = os.path.join(ROOT, "versions", ver, "generation.json")
     try:
@@ -98,17 +114,44 @@ def catalog_generation(ver, disk_entries, rom_entries):
     except FileNotFoundError:
         state = {"generation": 0, "content_sha256": None}
 
-    if state.get("content_sha256") != digest:
-        state = {
-            "generation": int(state.get("generation", 0)) + 1,
-            "content_sha256": digest,
-            "_comment": "Written by tools/gen_catalog.py. The generation only "
-                        "advances when content_sha256 changes; do not edit by "
-                        "hand. iOS deletes downloaded images when it changes.",
-        }
-        with open(path, "w") as f:
-            json.dump(state, f, indent=2)
-            f.write("\n")
+    # The counter must never go backwards. A deleted or reverted
+    # generation.json would otherwise reset it to 1, and a client that already
+    # saw a higher number would either miss a real change or see a spurious
+    # one. The floor is the generation in the committed catalog, which is in
+    # git and therefore survives losing generation.json.
+    floor, floor_digest = 0, None
+    committed = os.path.join(ROOT, "catalog", IFACE, ver, "catalog.json")
+    try:
+        with open(committed) as f:
+            prev = json.load(f)
+        floor = int(prev.get("generation", 0))
+        floor_digest = content_digest(prev.get("roms", []), prev.get("disks", []))
+    except (FileNotFoundError, ValueError, TypeError, KeyError):
+        pass
+
+    current = int(state.get("generation", 0) or 0)
+    if state.get("content_sha256") == digest and current >= floor:
+        return current
+
+    if digest == floor_digest:
+        # The artifacts are what the committed catalog already describes, so
+        # this is a lost or stale generation.json, not a content change. Adopt
+        # the published number rather than inventing a new one - a spurious
+        # bump deletes every user's downloaded images.
+        nxt = max(current, floor)
+    else:
+        nxt = max(current, floor) + 1
+    state = {
+        "generation": nxt,
+        "content_sha256": digest,
+        "_comment": "Written by tools/gen_catalog.py. The generation only "
+                    "advances when content_sha256 changes, and never "
+                    "decreases; do not edit by hand. iOS deletes downloaded "
+                    "images when it changes.",
+    }
+    with open(path, "w") as f:
+        json.dump(state, f, indent=2)
+        f.write("\n")
     return state["generation"]
 
 
@@ -265,7 +308,12 @@ def build_index(versions):
         tag = release_tag(ver)
         cpath = os.path.join(BUILD, tag, asset_name("catalog", ".json", ver))
         if not os.path.exists(cpath):
-            continue
+            # Never quietly publish an index that omits a version. The index is
+            # the entry point; a version missing from it is invisible to every
+            # client, and this used to happen with no message at all.
+            sys.exit("gen_catalog: %s is not built, so the index would omit "
+                     "RomWBW %s.\n  Run: tools/build_all.sh %s"
+                     % (os.path.basename(cpath), ver, ver))
         cat = json.load(open(cpath))
         vmeta = load("versions", ver, "version.json")
         entries.append({

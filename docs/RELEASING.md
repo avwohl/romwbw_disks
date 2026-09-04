@@ -30,7 +30,7 @@ virtualenv to set up beyond `um80`.
 `need_tools` (`tools/common.sh:48`) prints the install line for anything not on
 `PATH`, and each stage calls it for what that stage needs: `um80`/`ul80` in
 `tools/build_utils.sh:20` and `tools/build_rom.sh:23`, `cpmcp`/`cpmrm`/`cpmls` in
-`tools/build_disks.sh:24`, `gh` in `tools/publish_release.sh:28`. So a missing
+`tools/build_disks.sh:24`, `gh` in `tools/publish_release.sh`. So a missing
 assembler fails in the first second. It is not a blanket preflight: `curl`,
 `unzip` and `python3` are never passed to it and fail at the point of use, and
 cpmtools is not checked until stage 4 — after the download — so on a fresh
@@ -303,11 +303,13 @@ client that fetches it gets a 404 on a URL the index swears is there.
 ### Cutting a per-version release (immutable)
 
 `tools/publish_release.sh` scripts this whole section — verify, create each
-version tag, upload, index last — and refuses to touch a `v0-romwbw-*` tag that
-already exists (`tools/publish_release.sh:66-74`). Read section 6 before you use
-it: it sets `--prerelease` on any version whose `status` is not `stable`, which
-this document tells you not to do. The commands below are what it runs, and what
-to do by hand when you want to watch each step land.
+version tag, upload by name, index last. On a `v0-romwbw-*` tag that already
+exists it never changes a published asset: it compares each asset's size
+against what it would upload, leaves the ones already up untouched, uploads
+only what is missing, and aborts by name if any size differs. That is what
+makes an interrupted 200 MB upload recoverable without making an immutable
+tag editable. The commands below are what it runs, and what to do by hand
+when you want to watch each step land.
 
 ```sh
 V=3.5.1
@@ -410,13 +412,25 @@ shipped against it.** Not with `gh release delete`, not with `git push --delete`
 not by moving the tag to a new commit. There is no redirect. The URL either
 resolves to the bytes it always resolved to, or a shipped client fails.
 
-**Never change a published asset in place.** No `gh release upload --clobber` on a
-`v0-romwbw-*` tag. The only asset in this repository that is ever replaced is
-`index-v0.json` on `catalog-v0`, and that is safe only because it is 2942 bytes,
-is fetched fresh, and is content-verified against nothing downstream.
-(`tools/publish_release.sh:108` does pass `--clobber` on the per-version upload;
-that is only harmless because `:66-74` aborts on a tag that already exists, and
-it should not be read as licence to re-upload.)
+**Never change a published asset in place.** The only asset in this repository
+that is ever replaced is `index-v0.json` on `catalog-v0`, and that is safe only
+because it is 2942 bytes, is fetched fresh, and has nothing cached downstream
+of it.
+
+`tools/publish_release.sh` enforces this rather than relying on discipline. It
+passes `--clobber` only for `index-v0.json`; per-version assets are uploaded by
+name, without it. On a tag that already exists it compares each asset's size
+against what it would upload and then either
+
+- leaves it alone, if it is already up at the right size, or
+- aborts, if the sizes differ — that is someone changing an immutable
+  artifact, and it is refused by name.
+
+Anything missing is uploaded. That is deliberate: `gh release create` and
+`gh release upload` are two commands, so an upload that dies partway through
+200 MB leaves a real release carrying only some of its assets. Refusing every
+existing tag outright made that state unrecoverable; refusing only *changes*
+lets an interrupted publish be finished.
 
 **A corrected artifact gets a new RomWBW version entry or a new interface
 version — never a silent replacement.** If upstream ships 3.5.2, that is a new
@@ -482,12 +496,23 @@ status out of the index. It does not, and must not, infer anything from a GitHub
 badge. Encoding the same fact in two places is how ioscpm ended up with four
 documents describing a flag that was never set.
 
-The repository does not yet obey that third rule. `tools/publish_release.sh:100-101`
-reads `prerelease=""` / `[ "$status" = "stable" ] || prerelease="--prerelease"`,
-so publishing 3.6.0 through the script would mark that release a prerelease for
-exactly the reason this section rules out — encoding `status` a second time, in
-the one place a client cannot read it. Either delete those two lines or drop the
-rule; do not leave both standing and then publish 3.6.0 with the script.
+The script does set the flag — `[ "$status" = "stable" ] || prerelease="--prerelease"`
+— so `v0-romwbw-3.6.0` is published as a prerelease. That is a second encoding
+of `status`, and the objection above is the right one: two encodings of one
+fact drift, which is exactly how ioscpm ended up with four documents describing
+a flag that was not set.
+
+It is kept, because the flag is the only thing that tells a human browsing the
+releases page that 3.6.0 is not ready, and because dropping it would leave the
+GitHub UI actively misleading. What is not kept is the trust: after every
+publish, `tools/publish_release.sh` reads the flag back off each release and
+fails if it disagrees with that version's `status` in the manifest. So the two
+encodings cannot drift silently — the only way they diverge is a manual edit in
+the GitHub UI, and the next publish catches that.
+
+The rule that stands unchanged is the one for clients: **the index's `status`
+is authoritative, the GitHub flag is a label.** A client must never infer
+anything from a release badge.
 
 **Why the index tag is the only one whose Latest status matters.** No client URL
 in this repository resolves `releases/latest`. Every one names a tag explicitly —

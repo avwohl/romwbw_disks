@@ -15,10 +15,12 @@ than a build failure, so it can run on every push:
   - exactly one RomWBW version is marked default
   - generation.json's recorded content hash matches the catalog it describes
 """
-import hashlib
 import json
 import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gen_catalog  # noqa: E402
 
 IFACE = "v0"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -41,9 +43,10 @@ def main():
     if index.get("interface") != IFACE:
         bad("index interface is %r, expected %r" % (index.get("interface"), IFACE))
 
-    defaults = [e for e in index["romwbw_versions"] if e.get("default")]
+    defaults = [e["romwbw_version"] for e in index["romwbw_versions"] if e.get("default")]
     if len(defaults) != 1:
-        bad("index marks %d default versions, expected exactly 1" % len(defaults))
+        bad("index marks %d default versions (%s), expected exactly 1"
+            % (len(defaults), ", ".join(defaults) or "none"))
 
     versions = sorted(v for v in os.listdir(os.path.join(ROOT, "versions"))
                       if os.path.isdir(os.path.join(ROOT, "versions", v)))
@@ -93,11 +96,11 @@ def main():
         # The generation counter must describe THIS catalog's content, or the
         # value clients use to decide whether to invalidate is meaningless.
         gen = load("versions", ver, "generation.json")
-        payload = json.dumps(
-            [[e["filename"], e["sha256"]] for e in cat["roms"]]
-            + [[e["filename"], e["sha256"]] for e in cat["disks"]],
-            sort_keys=True).encode()
-        digest = hashlib.sha256(payload).hexdigest()
+        # The SAME function the generator uses, imported rather than
+        # reimplemented: two copies of this drifted apart once already, and a
+        # checker that hashes differently from the generator reports a
+        # permanent, meaningless failure.
+        digest = gen_catalog.content_digest(cat["roms"], cat["disks"])
         if gen.get("content_sha256") != digest:
             bad("%s generation.json content_sha256 does not describe the committed "
                 "catalog - regenerate with tools/gen_catalog.py" % ver)
@@ -105,7 +108,35 @@ def main():
             bad("%s generation.json says %r, catalog says %r"
                 % (ver, gen.get("generation"), cat.get("generation")))
 
-        entry = next(e for e in index["romwbw_versions"] if e["romwbw_version"] == ver)
+        entry = next((e for e in index["romwbw_versions"]
+                      if e["romwbw_version"] == ver), None)
+        if entry is None:
+            bad("%s has a committed catalog but no index entry - it would be "
+                "invisible to every client" % ver)
+            continue
+
+        # The index is what a client reads FIRST, and until now nothing
+        # compared its per-version fields against the version manifest. An
+        # index could name the wrong default, or a status and HCB bytes that
+        # disagreed with the catalog it points at, and every check still
+        # passed.
+        if bool(entry.get("default")) != bool(vmeta.get("default")):
+            bad("%s index default=%r disagrees with version.json default=%r"
+                % (ver, entry.get("default"), vmeta.get("default")))
+        if entry.get("status") != vmeta["status"]:
+            bad("%s index status %r disagrees with version.json %r"
+                % (ver, entry.get("status"), vmeta["status"]))
+        if entry.get("hbios") != vmeta["hbios"]:
+            bad("%s index hbios block disagrees with version.json" % ver)
+        if entry.get("hbios") != cat["hbios"]:
+            bad("%s index hbios block disagrees with the catalog it points at" % ver)
+        if entry.get("released") != vmeta.get("released"):
+            bad("%s index released %r disagrees with version.json %r"
+                % (ver, entry.get("released"), vmeta.get("released")))
+        if entry.get("release_tag") != cat["release_tag"]:
+            bad("%s index release_tag %r disagrees with the catalog %r"
+                % (ver, entry.get("release_tag"), cat["release_tag"]))
+
         if entry["generation"] != cat["generation"]:
             bad("%s index generation %r disagrees with catalog %r"
                 % (ver, entry["generation"], cat["generation"]))

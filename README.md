@@ -9,7 +9,8 @@ from a two-level catalog:
 
     interface version (v0)  ->  RomWBW version (3.5.1, 3.6.0)  ->  ROMs + disks
 
-The entry point is one small, stable URL:
+The entry point is one small, stable URL — `index-v0.json`, alone on the
+floating `catalog-v0` tag, which is cut last, after the assets it points at:
 
     https://github.com/avwohl/romwbw_disks/releases/download/catalog-v0/index-v0.json
 
@@ -33,8 +34,8 @@ I/O instead of hardware access. Banks 1–15 are the real thing, lifted verbatim
 from an upstream RomWBW release.
 
 That makes the ROM and the disk images a matched pair. RomWBW's CBIOS lives in
-the boot slice of each disk image and checks itself against what the ROM's
-HBIOS reports; when they disagree the guest prints
+the boot slice of each bootable disk image and checks itself against what the
+ROM's HBIOS reports; when they disagree the guest prints
 
     *** WARNING: HBIOS/CBIOS Version Mismatch ***
 
@@ -56,13 +57,14 @@ a tag at all; every later port pointed at that URL rather than duplicating
 
 ## What is published
 
-Two release tags per RomWBW version model, plus one for the index.
+One immutable release tag per RomWBW version, plus one mutable tag for the
+index.
 
 | Tag | Mutable? | Contents |
 |---|---|---|
 | `catalog-v0` | yes, rewritten when a version is added | `index-v0.json` only, a few KB |
-| `v0-romwbw-3.5.1` | **no** | 2 ROMs, 20 disk images, catalog, legacy XML — 202 MB |
-| `v0-romwbw-3.6.0` | **no** | 2 ROMs, 24 disk images, catalog, legacy XML — 234 MB |
+| `v0-romwbw-3.5.1` | **no** | 2 ROMs, 20 disk images, catalog, legacy XML — 202 MiB |
+| `v0-romwbw-3.6.0` | **no** | 2 ROMs, 24 disk images, catalog, legacy XML — 234 MiB |
 
 The thing that moves is tiny; the things clients cache never move. Every asset
 carries both versions in its name — `hd1k_combo-v0-3.5.1.img`,
@@ -89,8 +91,8 @@ not something to offer.
 
 RomWBW 3.6.0 drops `hd1k_ws4.img` (its combo's sixth slice is `wp`) and adds
 `hd1k_cobol`, `hd1k_dos65`, `hd1k_infocom`, `hd1k_msx` and `hd1k_wp`. It also
-made nearly every image bootable — under 3.5.1 eleven of the twenty ship with
-an unformatted boot track.
+made every published image bootable — under 3.5.1 eleven of the twenty ship
+with a boot track that was never written, left at the CP/M fill byte `0xE5`.
 
 ## Building
 
@@ -102,9 +104,9 @@ tools/build_all.sh              # every RomWBW version
 tools/build_all.sh 3.5.1        # just one
 ```
 
-That fetches the upstream `Package.zip` (pinned by sha256), assembles
-`w8.com`/`r8.com`, builds the ROMs, assembles the disk set, generates the
-catalogs from the artifacts it just produced, and verifies the result.
+That assembles `w8.com`/`r8.com`, fetches the upstream `Package.zip` (pinned by
+sha256), builds the ROMs, assembles the disk set, generates the catalogs from
+the artifacts it just produced, and verifies the result.
 
 Every size and hash in the published catalog is computed from the file that
 gets uploaded. Nothing is transcribed. The catalog this replaces was
@@ -117,6 +119,25 @@ bytes as the `emu_avw.rom` bundled in ioscpm, cpmdroid, z80cpmw and romwbw_emu
 today. The rebuilt `w8.com` and `r8.com` are likewise byte-identical to the
 copies inside the currently shipped `hd1k_combo.img`. This repo reproduces what
 is already in users' hands before it changes anything.
+
+### Proven by running them, not just hashing them
+
+`tools/boot_test.sh` drives the real emulator against the built artifacts. On a
+`romwbw_emu` pinned to 3.5.1 it asserts, and currently passes:
+
+- the 3.5.1 ROM and combo boot to a CP/M prompt printing `CBIOS v3.5.1 [WBW]`,
+  with no version-mismatch warning
+- a 3.6.0 disk on that 3.5.1 ROM **does** print
+  `*** WARNING: HBIOS/CBIOS Version Mismatch ***` — the guard firing is the
+  pass condition
+- the 3.6.0 ROM is refused outright, with
+  `ROM is built for RomWBW v3.6.0, but this emulator is pinned to v3.5.1`
+
+`R8` and `W8` were also round-tripped off the published combo: a 39-byte host
+file imported into CP/M and exported back came out byte-identical.
+
+The script skips rather than fails when no emulator binary is present, since a
+machine that can build these is not necessarily one that can run them.
 
 ## Layout
 
@@ -164,11 +185,14 @@ down to the version it was built for — which is why every index entry carries
 anything. [docs/CLIENT_MIGRATION.md](docs/CLIENT_MIGRATION.md) lists what that
 change touches.
 
-Nobody has yet diffed RomWBW 3.6.0's `Source/HBIOS/proto.asm` against the HBIOS
-functions the emulator core actually implements. Both `romwbw_pin.h:22-26` and
-`romwbw_emu/DOWNSTREAM.md:424-430` list that as required work and it is still
-open. Until it is done, "supports 3.6.0" means the ROM and disks are built and
-internally consistent — not that the emulator has been checked against them.
+Nobody has yet diffed RomWBW 3.6.0's HBIOS implementation against the HBIOS
+functions the emulator core actually implements. Both
+`romwbw_emu/src/romwbw_pin.h:22-26` and `romwbw_emu/DOWNSTREAM.md:424-430` list
+that as required work and it is still open. Both call it the `proto.asm` diff,
+but RomWBW 3.6.0 ships no `Source/HBIOS/proto.asm` — the files that carry that
+information are `Source/HBIOS/hbios.asm` and `Source/Doc/SystemGuide.md`. Until
+it is done, "supports 3.6.0" means the ROM and disks are built and internally
+consistent — not that the emulator has been checked against them.
 
 ## Licence
 

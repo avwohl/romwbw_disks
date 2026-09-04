@@ -36,6 +36,11 @@ VER_BYTE="$(vjson "$VER" hbios.ver_byte)"; UPD_BYTE="$(vjson "$VER" hbios.upd_by
 WANT_HCB="57a8$(printf '%x%x%x%x' "$MAJOR" "$MINOR" "$UPDATE" "$PATCH")"
 
 mkdir -p "$OUT"
+# Clear this builder's OWN output, and only its own: build_rom.sh and
+# build_disks.sh share $OUT, so "rm -rf $OUT" here would delete the
+# other one's work. Stale ROMs under a name no catalog mentions would
+# otherwise be uploaded to a tag this repo declares immutable.
+rm -f "$OUT"/*.rom
 rm -rf "$WORK"; mkdir -p "$WORK"
 
 # um80 resolves `include` relative to the working directory, so the source and

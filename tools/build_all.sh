@@ -16,9 +16,12 @@ set -eu
 
 if [ "$#" -gt 0 ]; then
     VERSIONS="$*"
+    SCOPED=1
 else
     VERSIONS="$(cd "$ROOT/versions" && ls -d */ 2>/dev/null | tr -d '/' | sort | tr '\n' ' ')"
+    SCOPED=0
 fi
+[ -n "$VERSIONS" ] || die "no RomWBW versions found under $ROOT/versions"
 
 echo "=== interface $IFACE, RomWBW: $VERSIONS ==="
 echo
@@ -40,4 +43,10 @@ done
 python3 "$ROOT/tools/gen_catalog.py" $VERSIONS
 echo
 
-sh "$ROOT/tools/verify_release.sh" $VERSIONS
+# Unscoped when the whole tree was built, so the index is verified too:
+# verify_release.sh can only check the index when every version is present.
+if [ "$SCOPED" = "1" ]; then
+    sh "$ROOT/tools/verify_release.sh" $VERSIONS
+else
+    sh "$ROOT/tools/verify_release.sh"
+fi

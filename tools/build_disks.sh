@@ -38,6 +38,11 @@ DISKJSON="$ROOT/versions/$VER/disks.json"
 cpmtool() { ( cd "$ROOT/tools" && "$@" ); }
 
 mkdir -p "$OUT"
+# Clear this builder's OWN output, and only its own: build_rom.sh and
+# build_disks.sh share $OUT, so "rm -rf $OUT" here would delete the
+# other one's work. Stale images under a name no catalog mentions would
+# otherwise be uploaded to a tag this repo declares immutable.
+rm -f "$OUT"/*.img
 echo "Building RomWBW v$VER disk images"
 
 # One line per disk: id, upstream path, diskdef, and the slices to inject into.
@@ -75,9 +80,15 @@ while IFS='	' read -r id upstream def slices; do
                 { echo "FAIL  $id: $size bytes is not a 1MB prefix plus whole 8MB slices" >&2; fail=$((fail+1)); rm -f "$img"; continue; } ;;
     esac
 
+    # broken tracks whether THIS IMAGE failed.  A `continue` in the utility
+    # loop below only skips a utility - it does not abandon the image - so
+    # without this flag a half-written image fell through to the reporting
+    # block, was recorded as good, and was published.
+    broken=0
     got=""
     if [ "$slices" != "-" ]; then
         for sl in $(echo "$slices" | tr ',' ' '); do
+            slice_ok=1
             for util in w8 r8; do
                 # cpmcp refuses to overwrite, so any existing copy goes first.
                 if cpmtool cpmls -f "$sl" "$img" 2>/dev/null | grep -qi "^$util\.com$"; then
@@ -85,17 +96,26 @@ while IFS='	' read -r id upstream def slices; do
                 fi
                 if ! cpmtool cpmcp -f "$sl" "$img" "$UTILS/$util.com" "0:$util.com" 2>/dev/null; then
                     echo "FAIL  $id: could not install $util.com on slice $sl" >&2
-                    fail=$((fail + 1)); continue
+                    broken=1; slice_ok=0; continue
                 fi
                 # cpmrm exits 0 having removed nothing on an image it cannot
                 # write, and cpmcp is then the one that complains.  Ask the
                 # directory, not the exit code.
-                cpmtool cpmls -f "$sl" "$img" 2>/dev/null | grep -qi "^$util\.com$" ||
-                    { echo "FAIL  $id: $util.com is not on slice $sl after cpmcp" >&2; fail=$((fail+1)); continue; }
-                injected=$((injected + 1))
+                if cpmtool cpmls -f "$sl" "$img" 2>/dev/null | grep -qi "^$util\.com$"; then
+                    injected=$((injected + 1))
+                else
+                    echo "FAIL  $id: $util.com is not on slice $sl after cpmcp" >&2
+                    broken=1; slice_ok=0
+                fi
             done
-            got="$got $sl"
+            # An `a && b` list under `set -e` aborts the script when a is
+            # false, so this is an if, not a one-liner.
+            if [ "$slice_ok" = 1 ]; then got="$got $sl"; fi
         done
+    fi
+    if [ "$broken" = 1 ]; then
+        echo "      removing $(basename "$img") rather than record a half-written image" >&2
+        fail=$((fail + 1)); rm -f "$img"; continue
     fi
 
     # One helper answers every question about a built image, so the catalog
@@ -124,6 +144,26 @@ print("got_utils=%s" % json.dumps(",".join(d["utils"]) or "-"))
     # whole banner is matched here rather than just the first two numbers.
     # A "-dev.NN" banner fails this too: a dev snapshot has the same HCB bytes
     # as its release, so the banner is the only thing that can tell them apart.
+    # A combo holds six independent boot slices, and diskinfo scans one of
+    # them.  Checking slice 0 and reporting on the image is how a disk whose
+    # slice 3 came from another RomWBW release would build clean and then warn
+    # at boot the moment a user booted that slice.  So check them all.
+    if [ "$def" = "wbw_hd1k_0" ]; then
+        nsl=$(python3 -c 'import json,sys; d=[x for x in json.load(open(sys.argv[1]))["disks"] if x["id"]==sys.argv[2]][0]; print(d.get("slices",1))' "$DISKJSON" "$id")
+        n=0
+        while [ "$n" -lt "$nsl" ]; do
+            sb="$(python3 "$ROOT/tools/diskinfo.py" "$img" "wbw_hd1k_$n" |
+                  python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["cbios_all"]))')"
+            if [ -n "$sb" ] && [ "$sb" != "CBIOS v$VER [WBW]" ]; then
+                echo "FAIL  $id: slice $n has CBIOS banner '$sb', not v$VER" >&2
+                fail=$((fail + 1)); rm -f "$img"; broken=1
+                break
+            fi
+            n=$((n + 1))
+        done
+        if [ "$broken" = 1 ]; then continue; fi
+    fi
+
     if [ -n "$cbios_all" ] && [ "$cbios_all" != "CBIOS v$VER [WBW]" ]; then
         echo "FAIL  $id: CBIOS banner is not exactly 'CBIOS v$VER [WBW]': $cbios_all" >&2
         echo "      That image would print 'HBIOS/CBIOS Version Mismatch' at boot." >&2

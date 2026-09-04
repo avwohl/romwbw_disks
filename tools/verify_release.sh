@@ -37,11 +37,15 @@ set -eu
 
 if [ "$#" -gt 0 ]; then
     VERSIONS="$*"
+    SCOPED=1
 else
     VERSIONS="$(cd "$ROOT/versions" && ls -d */ 2>/dev/null | tr -d '/' | sort | tr '\n' ' ')"
+    SCOPED=0
 fi
+[ -n "$VERSIONS" ] || die "no RomWBW versions found under $ROOT/versions"
 
 rc=0
+checked=0
 for v in $VERSIONS; do
     tag="$(release_tag "$v")"
     dir="$BUILD/$tag"
@@ -54,11 +58,24 @@ for v in $VERSIONS; do
     else
         rc=1
     fi
+    checked=$((checked + 1))
     echo
 done
 
+# "PASS: every artifact matches its catalog entry" having opened nothing is a
+# claim, not a result.
+[ "$checked" -gt 0 ] || die "verified nothing - no version had a built catalog"
+
+# The index describes every version, so it can only be verified when every
+# version is built.  Checking it after `verify_release.sh 3.5.1` in a tree
+# where 3.6.0 is not built reported a failure about 3.6.0 and made publishing
+# 3.5.1 alone impossible.
 idx="$BUILD/catalog-$IFACE/index-$IFACE.json"
-if [ -f "$idx" ]; then
+if [ "$SCOPED" = "1" ]; then
+    echo "=== index ==="
+    echo "  skipped: only $VERSIONS was requested, and the index covers every version"
+    echo
+elif [ -f "$idx" ]; then
     echo "=== index ==="
     python3 "$ROOT/tools/verify_catalog.py" --index "$idx" "$BUILD" || rc=1
     echo

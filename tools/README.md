@@ -13,6 +13,7 @@ of it or a check on it.
 | `gen_catalog.py` | writes the catalogs and the index from the built artifacts — every size and hash computed, none transcribed |
 | `verify_catalog.py` | re-derives every claim a catalog makes, independently of the generator. Works on downloaded assets too. |
 | `verify_release.sh` | runs `verify_catalog.py` across every version and the index |
+| `boot_test.sh` | actually boots the artifacts in romwbw_emu and asserts the version guards fire. Skips when no emulator is present. |
 | `diskinfo.py` | the single source of image facts: bootability, CBIOS banner, directory contents |
 | `cpm_disk.py` | CP/M image creation and file transfer for sssd, hd1k and combo formats |
 | `diskdefs` | cpmtools definitions, including the `wbw_hd1k_0..5` combo slices no distribution ships |

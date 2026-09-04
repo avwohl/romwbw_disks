@@ -273,10 +273,14 @@ them apart.
 `w8.com` and `r8.com` (`tools/gen_catalog.py:183`, `tools/diskinfo.py:107`).
 Only `hd1k_combo` has it, in both published versions. It is stated rather than
 implied by the description so a client can decide whether to offer host file
-transfer at all for a given disk. `tools/verify_catalog.py:128-139` additionally
-checks that a disk claiming `host_transfer` really has both `w8.com` and
-`r8.com` in the probed slice's directory, and that the three-byte
-`HBF_HOST_CAPS` probe `06 E9 CF` is present in the image; see
+transfer at all for a given disk. `tools/verify_catalog.py` additionally checks
+that the claim matches reality in both directions — a disk claiming
+`host_transfer` must have both `w8.com` and `r8.com` in the probed slice's
+directory, and one that does not claim it must not have them — and that the
+three-byte `HBF_HOST_CAPS` probe `06 E9 CF` is inside that `w8.com`. It reads
+the file out of the CP/M directory rather than scanning the image, because
+three bytes occur somewhere in 51 MB by chance and an image-wide search would
+pass on a `w8.com` that had lost the probe entirely. See
 [INTERFACE_V0.md](INTERFACE_V0.md) for what that interlock guarantees.
 
 **`defaultSlot`** is the slice a client should boot from when it mounts this
@@ -341,12 +345,20 @@ Two consequences worth stating plainly:
   `description`, a `license` or a `notes` entry does not bump the generation and
   does not delete anyone's library. That is deliberate: catalog copy should be
   fixable without cost.
-- **The pair list is in list order, not sorted.** `sort_keys=True` in
-  `tools/gen_catalog.py:91` orders dict keys, and the payload is a list of
-  lists, so it has no effect on the ordering of entries. Reordering the entries
-  in `versions/<ver>/roms.json` or `disks.json` changes the digest and bumps the
-  generation even though the published bytes are unchanged. Do not reorder those
-  files casually.
+- **The pair list is sorted before hashing.** `tools/gen_catalog.py`'s
+  `content_digest` calls `sorted()` on the pairs, so reordering entries in
+  `versions/<ver>/roms.json` or `disks.json` is a no-op: same files, same
+  hashes, same digest, same generation. This matters because the obvious
+  implementation — `json.dumps(..., sort_keys=True)` — does **not** do it.
+  `sort_keys` orders dict keys, and the payload is a list of lists, so a pure
+  reorder of a manifest silently bumped the generation and deleted every iOS
+  user's downloaded images.
+- **The counter never decreases.** A lost, reverted or hand-edited
+  `generation.json` cannot roll it back: `catalog_generation` takes a floor
+  from the `generation` in the committed `catalog/v0/<ver>/catalog.json`,
+  which is in git. If the artifacts still match what that committed catalog
+  describes, the published number is adopted rather than a new one invented —
+  a spurious bump costs every user their library.
 
 ### 4.3 It is per RomWBW version
 

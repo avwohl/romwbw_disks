@@ -41,8 +41,10 @@ done
 # emulator, and refuse if CAP_SAFE_PATHS is clear.  The probe assembles to
 # `ld b,0E9h / rst 8` = 06 e9 cf.  A W8 without it is syntactically fine and
 # semantically obsolete - no hash can tell you that, only this can.
-if ! od -An -tx1 -v "$OUT/w8.com" | tr -s ' ' | tr ' ' '\n' | tr -d '\n' |
-     grep -q "06e9cf"; then
+# Byte-exact, via python. The od|tr|grep version concatenated the hex with no
+# separators, so "06e9cf" also matched runs that merely spelled it across byte
+# boundaries - the bytes 10 6E 9C F3 passed the check.
+if ! python3 -c 'import sys; sys.exit(0 if bytes((0x06,0xE9,0xCF)) in open(sys.argv[1],"rb").read() else 1)' "$OUT/w8.com"; then
     die "w8.com does not contain the HBF_HOST_CAPS interlock (06 e9 cf).
        Either src/w8.asm lost the probe or the assembler miscompiled it.
        Shipping this would let an old emulator take an unchecked host path."
