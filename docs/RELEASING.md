@@ -715,15 +715,22 @@ core, and that is deliberately not a blocker — a shipped client filters 3.6.0
 out by `hbios.ver_byte`, so the entry is invisible to the builds that could not
 boot it. `"default"` moved to 3.6.0 on the same day.
 
-**What `default` on 3.6.0 obliges, and it is not nothing.** Every client bundles
-a 3.5.1 `emu_avw.rom` and none downloads a ROM, so a client that shipped today
-would preselect 3.6.0 disks and boot them against a 3.5.1 ROM - which the guest
-answers with `*** WARNING: HBIOS/CBIOS Version Mismatch ***`. ioscpm already
-says so before it happens (`romReleaseMismatchNotice`), so it is a warned path
-rather than a silent one, but it is a poor first run. Nothing is affected today
-because no released client reads this index at all. **Before any client ships,
-its bundled ROM has to move to 3.6.0, or `default` has to move back.** That is
-now the gate, and it is recorded in every client's todo.
+**What `default` on 3.6.0 exposes.** No client downloads a ROM yet - each
+bundles a 3.5.1 `emu_avw.rom` - so a client that shipped today would preselect
+3.6.0 disks and boot them against a 3.5.1 ROM, which the guest answers with
+`*** WARNING: HBIOS/CBIOS Version Mismatch ***`. ioscpm says so before it
+happens (`romReleaseMismatchNotice`), so it is warned rather than silent, but it
+is a poor first run. Nothing is affected today because no released client reads
+this index at all.
+
+The ROM is the last version-coupled thing left in a client, and fetching it from
+the catalog is what finishes the job this repository was created to do: a new
+RomWBW version should need a release HERE and nowhere else. `roms[]` has been in
+every catalog from the start for exactly that - `emu_avw` with `default: true`,
+a `sha256` and a size, under the same `base_url` as the disks. Re-bundling a ROM
+per release is the wrong answer; it puts a client release back on the critical
+path for every RomWBW bump. Keep a bundled ROM as the first-launch fallback and
+download the rest.
 
 **How a promotion is done, since it is not a rebuild.** Edit `status` in
 `versions/<ver>/version.json`, run `tools/gen_catalog.py --index`, and publish

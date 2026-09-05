@@ -28,28 +28,30 @@ F5 default-disk path, the Settings write-back and the release picker.  Each
 client's MANUAL_CHECKS.md lists what a person has to drive.  Until that happens
 none of this is known to work.
 
-- [ANY] BEFORE ANY CLIENT SHIPS: its bundled ROM must be 3.6.0, or default must
-move back.  3.6.0 is "status": "stable" AND "default": true as of 2026-09-05.
-Status was promoted on the emulator evidence - romwbw_emu v1.39 boots it and
-tools/boot_test.sh asserts the boot, banner, absence of a mismatch warning and an
-R8/W8 round trip every run - and default followed.
-  The catch is default, not status.  Every client bundles a 3.5.1 emu_avw.rom and
-NONE of them downloads a ROM, so a client shipping today would preselect 3.6.0
-disks and boot them against a 3.5.1 ROM, which the guest answers with
+- [ANY] THE CLIENTS MUST DOWNLOAD THE ROM FROM THE CATALOG.  This is the last
+version-coupled thing left in a client and the last thing standing between this
+family and the point of the whole exercise: a new RomWBW version should need a
+release HERE and nowhere else.
+  3.6.0 is "status": "stable" and "default": true as of 2026-09-05.  Every client
+still bundles a 3.5.1 emu_avw.rom and none fetches one, so a client shipping
+today would preselect 3.6.0 disks and boot them against a 3.5.1 ROM ->
 *** WARNING: HBIOS/CBIOS Version Mismatch ***.  ioscpm warns first
-(romReleaseMismatchNotice) so it is not silent, but it is a poor first run.
-Nothing is affected today because no released client reads this index at all.
-  Two ways to discharge it, and one has to happen before a store build: bundle
-the 3.6.0 ROM in each client (they already know how to read which release a ROM
-declares, via emu_romwbw_release_of_image), or move default back to 3.5.1.
-Downloading ROMs is the third option and is deliberately not implemented - see
-z80cpmw's todo, and note ioscpm's docs/ROM_ATTESTATION.md is an App Store filing
-naming emu_avw.rom specifically.
-  Promotion mechanics, since neither is a rebuild: edit version.json, run
-tools/gen_catalog.py --index, publish index-v0.json to the floating catalog-v0
-tag, never re-cut the immutable per-version assets.  check_committed.py allows a
-published catalog saying "preview" under a manifest saying "stable", in that
-direction only.
+(romReleaseMismatchNotice); nothing is affected today because no released client
+reads this index at all.
+  Re-bundling a 3.6.0 ROM in each client is NOT the fix and was wrongly written
+here first: it puts a client store release back on the critical path for every
+RomWBW bump, which is exactly the cost this repository was created to remove.
+  Everything needed is already published and mostly already parsed.  Each catalog
+carries roms[] with emu_avw flagged default, a sha256 and a size, under the same
+base_url as the disks; ioscpm already decodes roms[] (CatalogDocument.romEntries
+/ defaultROM, and it correctly does not assume emu_avw is present) and its bridge
+already exposes loadROMFromPath: and loadROMFromData: on the live path.  What is
+missing is the caller that hands them a downloaded path instead of a bundled one,
+plus the same in cpmdroid and z80cpmw.
+  Keep a bundled ROM as the FIRST-LAUNCH FALLBACK, not as the mechanism: the app
+should boot offline out of the box, and ioscpm's docs/ROM_ATTESTATION.md is an
+App Store filing naming emu_avw.rom as a reviewed asset.  Download every other
+release's ROM and verify it against the catalog sha256 exactly as disks are.
 
 - [ANY] DECIDED 2026-09-05: the pre-v0 hd1k_combo is accepted as equivalent and
 NOT refreshed.  What is left is carrying that into the clients.  The two images

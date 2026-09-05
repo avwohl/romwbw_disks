@@ -424,15 +424,24 @@ its own core supports; on a pre-v1.39 build 3.6.0 is filtered out before any
 status is read. The 234 MB download that would end in a refusal is prevented by
 the version bytes, not by the label.
 
-`"default": true` moved to 3.6.0 on the same day, and unlike the status change
-it carries an obligation. Every client bundles a 3.5.1 `emu_avw.rom` and none
-downloads a ROM, so a client shipping today would preselect 3.6.0 disks and boot
-them against a 3.5.1 ROM — `*** WARNING: HBIOS/CBIOS Version Mismatch ***`,
-which is precisely what the ROM/disk pairing rule exists to prevent. ioscpm
-warns before it happens rather than letting it surprise anyone
+`"default": true` moved to 3.6.0 on the same day, and it exposes the one piece
+of version-coupled state left in the clients: **none of them downloads a ROM
+yet.** Each bundles a 3.5.1 `emu_avw.rom`, so a client shipping today would
+preselect 3.6.0 disks and boot them against a 3.5.1 ROM —
+`*** WARNING: HBIOS/CBIOS Version Mismatch ***`, precisely what the ROM/disk
+pairing rule exists to prevent. ioscpm warns before it happens
 (`romReleaseMismatchNotice`), and no released client reads this index at all, so
-nothing is affected today. **Before any client ships, its bundled ROM has to
-move to 3.6.0, or `default` has to move back.**
+nothing is affected today.
+
+The fix is for clients to fetch the ROM from the catalog, as they already do for
+disks. **Re-bundling a 3.6.0 ROM in each client would be the wrong fix**: it
+would mean a client release for every RomWBW version, which is the exact cost
+this repository exists to remove. `roms[]` is in every catalog for this reason —
+`emu_avw` carries `default: true`, a `sha256` and a size, under the same
+`base_url` as the disks — and a client already has everything it needs to
+choose one. A bundled ROM should remain only as a first-launch fallback, so the
+app boots offline out of the box and the App Store filing keeps its reviewed
+asset.
 
 The note inside the published catalog still describes the old refusal, citing
 `emu_init.cc:52-60` and `ROMWBW_PIN_STR`. It is not corrected in place because
