@@ -19,6 +19,55 @@ set -eu
 VER="${1:?usage: fetch_romwbw.sh <romwbw-version>}"
 [ -f "$ROOT/versions/$VER/version.json" ] || die "unknown RomWBW version: $VER"
 
+TAG="$(vjson "$VER" upstream.tag)"
+
+# Only real RomWBW releases are published from here.  Upstream also tags
+# development snapshots - v3.7.0-dev.13 at the time of writing - and they are
+# not eligible:
+#
+#   - a snapshot's HCB carries the same two version bytes as the release it
+#     precedes (3.7.0-dev.13 reads 37 00, exactly as a released 3.7.0 would),
+#     so no version-byte check can tell them apart
+#   - RomWBW's CBIOS compares major.minor only, so a snapshot disk on a release
+#     ROM of the same major.minor does NOT print a mismatch warning
+#   - upstream may change anything before the release ships, and this repo's
+#     per-version tags are immutable once published
+#
+# The romwbw_emu tree already has one of these mistaken for a build input:
+# archive/romwbw-v3.6.0/SBC_simh_std_v360.rom is a v3.6.0-dev.46 snapshot.
+#
+# The check is a plain string test so it works with no network and no gh, and
+# is confirmed against GitHub's own prerelease flag when gh is available.
+case "$TAG" in
+    v[0-9]*.[0-9]*.[0-9]*)
+        case "$TAG" in
+            *-*|*+*) not_release=1 ;;
+            *)       not_release=0 ;;
+        esac ;;
+    *) not_release=1 ;;
+esac
+if [ "$not_release" = "1" ] && [ "${ALLOW_PRERELEASE:-0}" != "1" ]; then
+    die "upstream tag $TAG is not a plain release tag (vX.Y.Z).
+       Development snapshots are not published from this repo - their version
+       bytes are indistinguishable from the release they precede, and this
+       repo's per-version tags are immutable once published.
+       Wait for the release, or set ALLOW_PRERELEASE=1 to build one locally
+       (do not publish it)."
+fi
+if command -v gh >/dev/null 2>&1; then
+    is_pre="$(gh api "repos/wwarthen/RomWBW/releases/tags/$TAG" \
+              --jq '.prerelease' 2>/dev/null || echo unknown)"
+    if [ "$is_pre" = "true" ] && [ "${ALLOW_PRERELEASE:-0}" != "1" ]; then
+        die "GitHub marks upstream $TAG as a prerelease.
+       Not published from this repo.  Set ALLOW_PRERELEASE=1 to build it
+       locally anyway (do not publish it)."
+    fi
+fi
+if [ "${ALLOW_PRERELEASE:-0}" = "1" ]; then
+    echo "WARNING: ALLOW_PRERELEASE=1 - building from $TAG, which is not a" >&2
+    echo "         RomWBW release.  Do not publish the result." >&2
+fi
+
 URL="$(vjson "$VER" upstream.package_url)"
 DIR="$ROMWBW_CACHE/$(vjson "$VER" upstream.unpacked_dir)"
 ZIP="$DLDIR/RomWBW-v$VER-Package.zip"

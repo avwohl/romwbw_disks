@@ -7,6 +7,42 @@ separate, and [INTERFACE_V0.md](INTERFACE_V0.md) explains why. This document
 covers the other axis: which RomWBW releases exist here, exactly what differs
 between them, and what supporting each one costs.
 
+## Releases only, never development snapshots
+
+Only a real RomWBW release is published from here.
+
+This matters more than it sounds, because upstream tags development snapshots
+too and they sort **above** the newest release on the GitHub releases page. As
+of 2026-09-04 the top entry is `v3.7.0-dev.13` (2026-08-02, flagged
+prerelease); the newest actual release is `v3.6.0` (2026-03-28). Reading the
+first as "the current version" is the obvious mistake, and nothing downstream
+would catch it — see [The dev-snapshot trap](#the-dev-snapshot-trap) for why
+neither the version bytes nor the CBIOS mismatch guard can tell a snapshot from
+the release it precedes.
+
+`tools/fetch_romwbw.sh` enforces the rule: it refuses any upstream tag that is
+not a plain `vX.Y.Z`, and separately refuses one GitHub flags as a prerelease.
+The tag-shape test needs no network and no `gh`, so it holds in CI too.
+`ALLOW_PRERELEASE=1` overrides both, with a warning, for local experiments —
+never for publishing, because a per-version tag here is immutable once cut and
+upstream can change anything before the release ships.
+
+`tools/check_upstream.sh` prints which upstream releases exist, which are
+carried here, and which are prereleases, so "is there a new RomWBW?" has a
+one-command answer:
+
+```
+Published here:
+  3.5.1            stable
+  3.6.0            preview
+
+Upstream wwarthen/RomWBW (newest carried here: 2026-03-28):
+  v3.7.0-dev.13      2026-08-02  prerelease - NOT publishable
+  v3.6.0             2026-03-28  published here
+  v3.5.1             2025-05-21  published here
+  v3.5.0             2025-04-04  older, not carried
+```
+
 ## The releases
 
 | RomWBW | Upstream tag | Released | Status | HCB bytes | ROMs | Disks |
@@ -427,10 +463,16 @@ supplied stock ROM — anything you put in `$ROMWBW_CACHE` yourself — check it
 `strings` for `-dev.` before you trust the build. A version-byte check will
 not do it for you.
 
-## Adding RomWBW 3.7.0
+## Adding the next RomWBW release
 
-RomWBW upstream has a v3.7.0 development series. When it releases, this is the
-whole procedure. It touches no client and does not bump the interface version.
+**RomWBW 3.7.0 has not been released.** As of 2026-09-04 upstream's newest
+release is v3.6.0 and the 3.7 series exists only as prerelease development
+snapshots, the latest being `v3.7.0-dev.13`. Nothing 3.7 is published here, and
+`tools/fetch_romwbw.sh` will refuse to build from a snapshot.
+
+When 3.7.0 — or whatever comes next — actually releases, this is the whole
+procedure. It touches no client and does not bump the interface version.
+Substitute the real version number for `3.7.0` throughout.
 
 1. **Create `versions/3.7.0/version.json`.** Copy `versions/3.6.0/version.json`
    and set `romwbw_version`, `released`, `hbios.{major,minor,update,patch}`

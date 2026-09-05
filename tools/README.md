@@ -6,7 +6,8 @@ of it or a check on it.
 | Script | Does |
 |---|---|
 | `common.sh` | shared settings, sourced not run. Owns `IFACE`, the asset-naming and release-tag functions, and the toolchain check. |
-| `fetch_romwbw.sh` | downloads an upstream `Package.zip`, pins it by sha256 in `versions/<ver>/version.json`, extracts only the build inputs |
+| `check_upstream.sh` | asks GitHub which RomWBW releases exist, which are carried here, and which are prereleases |
+| `fetch_romwbw.sh` | downloads an upstream `Package.zip`, pins it by sha256 in `versions/<ver>/version.json`, extracts only the build inputs. Refuses a prerelease tag. |
 | `build_utils.sh` | assembles `w8.com` and `r8.com`, and asserts `w8.com` still carries the `06 e9 cf` capability interlock |
 | `build_rom.sh` | generates `romwbw_ver.inc`, assembles bank 0, overlays banks 1–15 from a stock ROM, verifies the HCB |
 | `build_disks.sh` | copies the stock images, injects `w8`/`r8` where the manifest says, verifies each CBIOS banner |
@@ -17,6 +18,29 @@ of it or a check on it.
 | `diskinfo.py` | the single source of image facts: bootability, CBIOS banner, directory contents |
 | `cpm_disk.py` | CP/M image creation and file transfer for sssd, hd1k and combo formats |
 | `diskdefs` | cpmtools definitions, including the `wbw_hd1k_0..5` combo slices no distribution ships |
+
+## Releases only, never snapshots
+
+`fetch_romwbw.sh` refuses an upstream tag that is not a plain `vX.Y.Z`, and
+refuses one GitHub marks as a prerelease. Upstream tags development snapshots
+alongside releases — `v3.7.0-dev.13` sits above `v3.6.0` on the releases page —
+and they are not publishable from here:
+
+- a snapshot's HCB carries the same two version bytes as the release it
+  precedes: `v3.7.0-dev.13` reads `37 00`, exactly as a released 3.7.0 would.
+  No version-byte check can tell them apart.
+- RomWBW's CBIOS compares major.minor only, so a snapshot disk booted against a
+  release ROM of the same major.minor prints **no** mismatch warning.
+- upstream can change anything before the release ships, and this repo's
+  per-version tags are immutable once published.
+
+`romwbw_emu` already has one of these mistaken for a build input:
+`archive/romwbw-v3.6.0/SBC_simh_std_v360.rom` is a `v3.6.0-dev.46` snapshot.
+
+`ALLOW_PRERELEASE=1` builds one locally anyway, with a warning. Do not publish
+the result.
+
+Run `tools/check_upstream.sh` to see where things stand.
 
 ## Why `cpm_disk.py` is here
 
