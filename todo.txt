@@ -28,13 +28,31 @@ F5 default-disk path, the Settings write-back and the release picker.  Each
 client's MANUAL_CHECKS.md lists what a person has to drive.  Until that happens
 none of this is known to work.
 
-- [ANY] the HBIOS dispatcher diff for 3.6.0 is still not done.  Booting six
-operating systems and round-tripping R8/W8 exercises a great deal of that
-surface without enumerating it, and identical BF_* equates prove the function
-numbers did not move, not that the behaviour behind one is unchanged.  What has
-to be read is RomWBW's Source/HBIOS/hbios.asm (263,153 bytes in 3.5.1, 267,954 in
-3.6.0) and Source/Doc/SystemGuide.md against the emulator's dispatcher.  There is
-no proto.asm and never was; docs/ROMWBW_VERSIONS.md carries the detail.
+- [ANY] the HBIOS dispatcher diff for 3.6.0 IS DONE, 2026-09-05, and it found
+six real bugs - all of them in romwbw_emu, all now fixed (romwbw_emu aa52c9e).
+  The result was not the expected one.  NOTHING changed contract between 3.5.1
+and 3.6.0: all 124 BF_* equates resolve identically and a block-by-block read of
+hbios.asm found no register, unit or side-effect change in any function the core
+implements.  What changed is REACHABILITY.  3.6.0 moved the boot loader's device
+inventory out of the HBIOS bank into a ROM app (Source/HBIOS/invntdev.asm), and
+our proxy REPLACES that bank - so code that used to be ours now runs against the
+dispatcher and read back six answers that had been wrong all along with no
+caller to notice.  BF_DIOCAP had DE and HL swapped (a 49MB disk reported as
+65536MB, and COPYSL.COM reads the same value from CP/M, so it was never confined
+to a diagnostic screen); BF_DIODEVICE left the device-class nibble at zero;
+BF_VDAQRY had rows and columns reversed; BF_VDADEV had no case at all;
+BF_SNDQUERY ignored its subfunction; BF_CIOQUERY answered the wrong question.
+Also fixed: an unimplemented CIO, DIO or SYS function called emu_fatal(), so a
+guest could kill the emulator process by asking for something unimplemented.
+  Two things this repository's own docs got WRONG and which are now corrected in
+docs/FINDINGS.md: the claim that unimplemented functions answer HBR_NOFUNC (only
+the EXT group did - CIO/DIO/SYS aborted and RTC/VDA/SND returned success with
+stale registers), and BF_SNDNOTE's "quarter note" -> "eighth tone" change, which
+was cited as a semantic change and is a terminology CORRECTION: the note tables
+are byte-identical and 48 steps per octave really is eight per whole tone.
+  What is still not done is the rest of hbios.asm.  This pass covered the boot
+path, the device inventory, every function the dispatcher implements, and the
+new 3.6.0 surface.  It did not read all 268KB.
 
 - [ANY] tools/publish_release.sh is undocumented and contradicts section 6 of
 docs/RELEASING.md.  It appears in neither that document's procedure nor

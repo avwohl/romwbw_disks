@@ -229,7 +229,7 @@ deliberately unpinned in CI.
 | iOSCPM | the `um80` mentions in `README.md` and `docs/DISK_W8FIX_RUNBOOK.md`; nothing in the build |
 | CPMDroid | the `um80` mention in `README.md`; the hot-patch in `app/src/main/cpp/emu_io_android.cpp` (the `W8_BROKEN` scan, section 6) |
 | Z80CPMW | the `um80` mention in `README.md`; `packaging/scripts/verify-disk-assets.sh` — **but see below** |
-| all three | `tools/check-disk-pins.sh` (section 11) |
+| all three | `tools/check-disk-pins.sh` (section 12) |
 
 ### The one thing that must not simply disappear
 
@@ -551,7 +551,52 @@ an image it downloaded - a fresh download must match the catalog. And the
 alternate must not survive a re-download: once a device fetches the canonical
 combo, the exception has no further use on that device.
 
-## 11. Open questions this repository does not answer
+## 11. The HBIOS dispatcher diff, and two things this document got wrong
+
+Done 2026-09-05, against RomWBW 3.6.0's `Source/HBIOS/` (extracted from the
+published `Package.zip`, which ships `Source/` even though the build only unpacks
+`Binary/`) and `romwbw_emu`'s `src/hbios_dispatch.cc`.
+
+**Nothing changed contract.** All 124 `BF_*` equates resolve identically in 3.5.1
+and 3.6.0 - none added, removed or renumbered - and a block-by-block read of
+`hbios.asm` found no register, unit or side-effect change in any function the
+core implements. The long-standing worry, that a function's behaviour moved
+under an unchanged number, did not happen.
+
+**What changed is reachability, and that found six bugs.** 3.6.0 moved the boot
+loader's device inventory out of the HBIOS bank into a ROM app
+(`Source/HBIOS/invntdev.asm`). The emulator's proxy *replaces* the HBIOS bank, so
+that code used to be ours and never touched the dispatcher. Now it runs against
+it and reads back answers that were wrong all along with nothing to notice:
+`BF_DIOCAP` returned `DE` and `HL` swapped (a 49 MB disk reported as 65536MB, and
+`COPYSL.COM` reads the same value from CP/M), `BF_DIODEVICE` left the
+device-class nibble at zero, `BF_VDAQRY` had rows and columns reversed,
+`BF_VDADEV` had no case at all, `BF_SNDQUERY` ignored its subfunction, and
+`BF_CIOQUERY` answered the wrong question. Separately, an unimplemented CIO, DIO
+or SYS function called `emu_fatal()`, so a guest could kill the emulator process
+by asking for something unimplemented. All fixed in `romwbw_emu` aa52c9e.
+
+**Two claims made earlier in this session were wrong.** Both were caught by
+checking rather than by argument, and both are worth recording because each was
+stated confidently:
+
+- *"Unimplemented functions fall through to `HBR_NOFUNC`."* False. Only the EXT
+  group did. CIO, DIO and SYS aborted the process; RTC, VDA and SND returned
+  **success with the caller's registers untouched**, which is worse than an
+  error because a caller cannot defend against it. That is precisely how
+  `invntdev` came to print a sound chip's name in the video row.
+- *"`BF_SNDNOTE` changed meaning between 3.5.1 and 3.6.0."* It did not. The
+  comment moved from "each value is a quarter note" to "an eighth tone", but the
+  note tables in `sn76489.asm` and `ay38910.asm` are byte-identical and 48 steps
+  per octave really is eight per whole tone. 3.6.0 corrected wrong terminology.
+  It was cited here as the headline example of a semantic change; it is an
+  example of why a comment diff is not evidence.
+
+**What is still not done.** This pass covered the boot path, the device
+inventory, every function the dispatcher implements, and 3.6.0's new surface. It
+did not read all 268 KB of `hbios.asm`.
+
+## 12. Open questions this repository does not answer
 
 Stated as questions because nobody has decided, not because the answers are
 obvious.
@@ -609,26 +654,12 @@ dropped from `v1.4.5` onward. Meanwhile upstream RomWBW v3.6.0 ships its own
 published alongside it, retired, or compared against upstream's first, is
 undecided.
 
-**Has anyone diffed v3.6.0's `Source/HBIOS/proto.asm` against the HBIOS
-functions the emulator core actually implements?** The question was
-unanswerable as posed: **there is no `proto.asm` in any RomWBW release.**
-`romwbw_emu/DOWNSTREAM.md` now says so outright — the files that carry that
-information are `Source/HBIOS/hbios.asm` and `Source/Doc/SystemGuide.md` — and
-`romwbw_emu/src/romwbw_pin.h` no longer names the file at all: its "Adding a
-release" list is build, boot, round-trip `R8`/`W8`, add the `X()` line.
-
-What was done instead, on 2026-09-05, is that 3.6.0 was **run**: CP/M 2.2,
-banked CP/M 3, ZPM3, Z3PLUS, ZSDOS and NZCOM all boot from the published
-images; `R8`/`W8` round-trip a file byte-identically, exercising the private
-`0xE1`–`0xEA` block including the `HBF_HOST_CAPS` interlock; the boot loader
-validates NVRAM, so the checksum seed agrees with the ROM's own SYSCONF; and a
-mismatched ROM/disk pair still warns in both directions.
-
-The semantic pass over `hbios.asm` (263,153 bytes in 3.5.1, 267,954 in 3.6.0)
-is still not done, and identical `BF_*` equates are still not a substitute for
-it. Booting six operating systems exercises much of that surface without
-enumerating it. But "supports 3.6.0" is no longer a claim about artifacts
-alone.
+**~~Has anyone diffed v3.6.0's HBIOS against the functions the emulator core
+actually implements?~~ DONE 2026-09-05 — see section 11.** No function changed
+contract; six dispatcher bugs that 3.6.0 made reachable were found and fixed in
+`romwbw_emu`. The remaining unknown is narrower than it was: this pass covered
+the boot path, the device inventory, every implemented function and 3.6.0's new
+surface, but not all 268 KB of `hbios.asm`.
 
 **Does `cpmemu/util/cpm_disk.py` have one home or two?** This repository now
 vendors it at `tools/cpm_disk.py` as the canonical copy. `cpmemu`'s copy stays
