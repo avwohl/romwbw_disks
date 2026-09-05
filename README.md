@@ -122,19 +122,27 @@ is already in users' hands before it changes anything.
 
 ### Proven by running them, not just hashing them
 
-`tools/boot_test.sh` drives the real emulator against the built artifacts. On a
-`romwbw_emu` pinned to 3.5.1 it asserts, and currently passes:
+`tools/boot_test.sh` drives the real emulator against the built artifacts. It
+asks the binary which RomWBW releases it can run and holds it to that answer,
+so the same script is correct against an emulator with the old compile-time pin
+and against one with the runtime version. For each release the emulator can
+run, it asserts — and currently passes:
 
-- the 3.5.1 ROM and combo boot to a CP/M prompt printing `CBIOS v3.5.1 [WBW]`,
-  with no version-mismatch warning
-- a 3.6.0 disk on that 3.5.1 ROM **does** print
+- the ROM and combo boot to a CP/M prompt printing `CBIOS v<ver> [WBW]`, with
+  no version-mismatch warning
+- the emulator reports that release, read from the ROM — skipped against a
+  pinned build, which never read one
+- a disk from *another* release on that ROM **does** print
   `*** WARNING: HBIOS/CBIOS Version Mismatch ***` — the guard firing is the
-  pass condition
-- the 3.6.0 ROM is refused outright, with
-  `ROM is built for RomWBW v3.6.0, but this emulator is pinned to v3.5.1`
+  pass condition, and it is now the only thing enforcing the ROM/disk pairing
+- `R8` and `W8` round-trip a file byte-identically, which exercises the private
+  `0xE1`–`0xEA` host block that upstream RomWBW knows nothing about
 
-`R8` and `W8` were also round-tripped off the published combo: a 39-byte host
-file imported into CP/M and exported back came out byte-identical.
+For a release the emulator *cannot* run, the refusal by name is the pass.
+
+Against `romwbw_emu` v1.39 the run ends:
+
+    One emulator binary booted v3.5.1 v3.6.0 - 2 published releases.
 
 The script skips rather than fails when no emulator binary is present, since a
 machine that can build these is not necessarily one that can run them.
@@ -163,36 +171,91 @@ generates `romwbw_ver.inc` from `versions/<ver>/version.json`, and
 - [docs/ROMWBW_VERSIONS.md](docs/ROMWBW_VERSIONS.md) — 3.5.1 vs 3.6.0, and how
   to add the next one
 - [docs/CLIENT_MIGRATION.md](docs/CLIENT_MIGRATION.md) — what each client has to
-  change, including the one blocker
+  change, now that the emulator blocker is cleared
 - [docs/RELEASING.md](docs/RELEASING.md) — building and publishing
 - [docs/FINDINGS.md](docs/FINDINGS.md) — what was measured about the existing
   system, and what is still unknown
 
-## The blocker, stated plainly
+## The blocker: cleared in the core, still live in the clients
 
-A client can *fetch* both RomWBW versions today. It cannot *run* both.
+A client could *fetch* both RomWBW versions and run only one. That was the one
+thing this repository's design could not fix on its own, and it is now fixed —
+upstream, in `romwbw_emu`, not here.
 
-`emu_validate_rom_hcb` in `romwbw_emu/src/emu_init.cc:52-60` compares the
-loaded ROM's HBIOS Configuration Block against the compile-time
-`ROMWBW_PIN_VER_BYTE` / `ROMWBW_PIN_UPD_BYTE` from `src/romwbw_pin.h` and
-refuses the load on a mismatch. A binary pinned to 3.5.1 physically cannot load
-a 3.6.0 ROM.
+`emu_validate_rom_hcb` compared a loaded ROM's HBIOS Configuration Block
+against the compile-time `ROMWBW_PIN_VER_BYTE` / `ROMWBW_PIN_UPD_BYTE` and
+refused the load on a mismatch, so a binary pinned to 3.5.1 physically could
+not load a 3.6.0 ROM. **The version is now read out of the loaded ROM at run
+time** (`romwbw_emu` v1.39), and one binary boots every release in that core's
+`ROMWBW_SUPPORTED_RELEASES` — today both of ours. Five sites reported a version
+to the guest and all five now derive it from the ROM: `HBF_SYSVER`, the NVRAM
+checksum seed, the HBIOS ident block, the CBIOS page-zero stamp at
+`0x42`/`0x43`, and the load-time check itself.
 
-So RomWBW 3.6.0 is published here as **preview**. Until `romwbw_emu` makes that
-pin runtime state read from the loaded ROM, a client should filter the index
-down to the version it was built for — which is why every index entry carries
-`hbios.ver_byte` and `hbios.upd_byte`, so it can filter without downloading
-anything. [docs/CLIENT_MIGRATION.md](docs/CLIENT_MIGRATION.md) lists what that
-change touches.
+`tools/boot_test.sh` proves it against these artifacts, and still passes
+against an emulator built before the change — it asks the binary which releases
+it can run and holds it to the answer. Abridged, with the v3.6.0 block folded
+away:
 
-Nobody has yet diffed RomWBW 3.6.0's HBIOS implementation against the HBIOS
-functions the emulator core actually implements. Both
-`romwbw_emu/src/romwbw_pin.h:22-26` and `romwbw_emu/DOWNSTREAM.md:424-430` list
-that as required work and it is still open. Both call it the `proto.asm` diff,
-but RomWBW 3.6.0 ships no `Source/HBIOS/proto.asm` — the files that carry that
-information are `Source/HBIOS/hbios.asm` and `Source/Doc/SystemGuide.md`. Until
-it is done, "supports 3.6.0" means the ROM and disks are built and internally
-consistent — not that the emulator has been checked against them.
+    can run RomWBW: v3.5.1 v3.6.0
+
+    === RomWBW v3.5.1 ===
+      ok    boots and prints CBIOS v3.5.1 [WBW]
+      ok    reaches the CP/M prompt
+      ok    no version-mismatch warning, as expected for a matched pair
+      ok    the emulator reports v3.5.1, read from the ROM
+      ok    a v3.6.0 disk on a v3.5.1 ROM warns, as it must
+      ok    R8/W8 round-trip a file byte-identically
+
+    One emulator binary booted v3.5.1 v3.6.0 - 2 published releases.
+
+**3.6.0 stays `preview` in the published index, and the reason is now a
+different one.** It is no longer "no emulator can load this". It is that no
+*released client* carries the new core yet: iOS, Android and Windows all ship
+a binary built before v1.39. Until they do, a client should still filter the
+index down to the version it was built for — which is why every index entry
+carries `hbios.ver_byte` and `hbios.upd_byte`, so it can filter without
+downloading anything. [docs/CLIENT_MIGRATION.md](docs/CLIENT_MIGRATION.md)
+lists what each client has to change.
+
+The published `versions/3.6.0/version.json` note still describes the old
+refusal, naming `emu_init.cc:52-60` and `ROMWBW_PIN_STR`. Its *conclusion* is
+still true — no released client can load a 3.6.0 ROM — but its explanation is
+stale. It is not corrected in place: that catalog is published on the immutable
+`v0-romwbw-3.6.0` tag, and this repository never rewrites a published asset.
+It gets corrected the next time that version's assets are legitimately re-cut.
+
+### And 3.6.0 has now actually been run
+
+Under the runtime-version core, RomWBW 3.6.0 has been booted from the images
+published here — which it never had been. Two different kinds of evidence, and
+it is worth keeping them apart.
+
+`tools/boot_test.sh` asserts on every run, for every release the emulator can
+run: the CP/M 2.2 boot, the `CBIOS v3.6.0 [WBW]` banner, the CP/M prompt, the
+release the emulator reports back from the ROM, a mismatched pair warning in
+both directions, and an `R8`/`W8` round trip that comes back byte-identical —
+which exercises the private `0xE1`–`0xEA` host block that upstream knows
+nothing about.
+
+Checked once by hand on 2026-09-05, and re-run by no script: banked CP/M 3,
+ZPM3, Z3PLUS, ZSDOS and NZCOM all boot, and the boot loader prints
+`NV Switches Found`, so the NVRAM checksum seed agrees with the ROM's own
+SYSCONF.
+
+What this does **not** close is the source-level question. Nobody has read
+3.6.0's `Source/HBIOS/hbios.asm` against the functions the emulator's
+dispatcher implements, and booting six operating systems exercises much of that
+surface without enumerating it. "Supports 3.6.0" now means the release has been
+run, not that the dispatcher has been audited against it —
+[docs/FINDINGS.md](docs/FINDINGS.md) keeps that item open.
+
+Both `romwbw_emu/src/romwbw_pin.h` and `romwbw_emu/DOWNSTREAM.md` used to list
+a `proto.asm` diff as required work before adopting a release. There is no such
+file: RomWBW ships no `Source/HBIOS/proto.asm` in any release — the files that
+carry that information are `Source/HBIOS/hbios.asm` and
+`Source/Doc/SystemGuide.md`. Both documents now describe booting the release
+and exercising the host block instead, which is what was actually done.
 
 ## Licence
 

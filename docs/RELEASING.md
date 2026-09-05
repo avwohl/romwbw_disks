@@ -438,6 +438,15 @@ version — never a silent replacement.** If upstream ships 3.5.2, that is a new
 change, that is `v1`: new release tags, a new index URL, and every v0 tag left
 untouched, as [INTERFACE_V0.md](INTERFACE_V0.md) describes.
 
+**A new RomWBW version has a `romwbw_emu` side, and it comes before the tag.**
+Since `romwbw_emu` v1.39 the core carries no compile-time version pin, but it
+does carry a list: `emu_validate_rom_hcb` refuses by name any release not in
+`ROMWBW_SUPPORTED_RELEASES` (`romwbw_emu/src/romwbw_pin.h`). A newly built
+3.7.0 ROM will not load anywhere until an `X()` line is added there, and that
+line is a claim that somebody booted the release — so boot it first
+(`tools/boot_test.sh 3.7.0`), then add the line. Publishing a version no core
+will load is how you ship 234 MB nobody can use.
+
 What is **not** currently solved: there is no mechanism for a corrected respin of
 the *same* RomWBW version under the *same* interface version. The naming scheme
 has no room for one — assets are `<id>-v0-<ver>.<ext>` on `v0-romwbw-<ver>`, with
@@ -488,12 +497,14 @@ That is luck, not design.
 The third one needs saying. "Preview" is data, not release metadata: it is
 `status` in `versions/<ver>/version.json`, which flows into `catalog.status` and
 into each index entry. RomWBW 3.6.0 is `"status": "preview"` and
-`"default": false` today because no released client can load a 3.6.0 ROM —
-`emu_validate_rom_hcb` at `romwbw_emu/src/emu_init.cc:52-60` compares the loaded
-ROM's HCB bytes against the compile-time `ROMWBW_PIN_VER_BYTE` /
-`ROMWBW_PIN_UPD_BYTE` from `src/romwbw_pin.h` and refuses. A client reads that
-status out of the index. It does not, and must not, infer anything from a GitHub
-badge. Encoding the same fact in two places is how ioscpm ended up with four
+`"default": false` today because no released client can load a 3.6.0 ROM. That
+was once a property of the emulator core — `emu_validate_rom_hcb` compared the
+loaded ROM's HCB bytes against a compile-time pin and refused — and since
+`romwbw_emu` v1.39 it is not: the core reads the version out of the ROM and
+boots either release. What keeps 3.6.0 in preview now is that **no released
+client contains that core**, so the conclusion is unchanged and the reason is
+not. A client reads that status out of the index. It does not, and must not,
+infer anything from a GitHub badge. Encoding the same fact in two places is how ioscpm ended up with four
 documents describing a flag that was never set.
 
 The script does set the flag — `[ "$status" = "stable" ] || prerelease="--prerelease"`
@@ -507,8 +518,13 @@ releases page that 3.6.0 is not ready, and because dropping it would leave the
 GitHub UI actively misleading. What is not kept is the trust: after every
 publish, `tools/publish_release.sh` reads the flag back off each release and
 fails if it disagrees with that version's `status` in the manifest. So the two
-encodings cannot drift silently — the only way they diverge is a manual edit in
-the GitHub UI, and the next publish catches that.
+encodings cannot drift silently — but "cannot drift" means "the next publish
+catches it", not "it never happens". Three things put them out of step between
+publishes: a manual edit in the GitHub UI, promoting a version from `preview`
+to `stable` in `version.json` without re-publishing, and section 4's by-hand
+recipe, which creates the release itself and so can set the flag differently
+from what the manifest says. Each is caught the next time
+`tools/publish_release.sh` runs, and not before.
 
 The rule that stands unchanged is the one for clients: **the index's `status`
 is authoritative, the GitHub flag is a label.** A client must never infer
@@ -624,6 +640,11 @@ Build:
 - [ ] `cpmcp`, `cpmrm`, `cpmls` on `PATH`.
 - [ ] `rm -rf build && tools/build_all.sh` exits 0 and ends with
       `PASS: every artifact matches its catalog entry`.
+- [ ] `tools/boot_test.sh` exits 0 **and** its last summary line names every
+      version you are about to publish — `One emulator binary booted v3.5.1
+      v3.6.0 - 2 published releases.` It needs the populated `build/` from the
+      step above, and `build_all.sh` does not run it for you. A `SKIP` line
+      means no emulator was found, which is not a pass.
 - [ ] 53 generated files, all byte-identical to the previous build (section 3).
 - [ ] `emu_avw-v0-3.5.1.rom` is still `c7abc580…` — if it is not, stop and find out why.
 - [ ] `git status` is clean apart from `build/`; `versions/*/generation.json` and
@@ -659,14 +680,32 @@ Do not:
 
 ## Known open work
 
-Nobody has diffed RomWBW v3.6.0's `Source/HBIOS/proto.asm` against the HBIOS
-functions the emulator core actually implements. `romwbw_pin.h:22-26` and
-`romwbw_emu/DOWNSTREAM.md:424-430` both list it as required work, and it is still
-open. The 3.6.0 artifacts in this repo build, verify and carry the correct HCB and
-CBIOS banners; that is a statement about the build, not a statement that the
-emulator implements everything 3.6.0's HBIOS expects. 3.6.0 is published with
-`"status": "preview"` for that reason as well as the hard blocker in
-`emu_validate_rom_hcb`.
+**3.6.0 has been run, and the `proto.asm` task was never possible as written.**
+There is no `Source/HBIOS/proto.asm` in any RomWBW release; both places that
+demanded one — `romwbw_emu`'s `src/romwbw_pin.h` and `DOWNSTREAM.md` — have
+been rewritten, and `DOWNSTREAM.md` now says so outright. What was done instead
+on 2026-09-05: under `romwbw_emu` v1.39, 3.6.0 boots CP/M 2.2, banked CP/M 3,
+ZPM3, Z3PLUS, ZSDOS and NZCOM from the images published here, `R8`/`W8`
+round-trip a file byte-identically, and the boot loader prints
+`NV Switches Found`.
+
+Be precise about what is machine-checked. `tools/boot_test.sh` asserts the
+CP/M 2.2 half, for every release the emulator says it can run: the combo image
+boots, the `CBIOS v<ver> [WBW]` banner appears, the CP/M prompt is reached, the
+emulator reports the release it read from the ROM, a disk from another release
+warns, and `R8`/`W8` round-trip a file byte-identically. The other five
+operating systems and the NVRAM check were run by hand on 2026-09-05 and are
+not re-run by any script.
+
+Still not done: a function-by-function read of 3.6.0's `hbios.asm` against the
+emulator's dispatcher. See [ROMWBW_VERSIONS.md](ROMWBW_VERSIONS.md).
+
+3.6.0 stays `"status": "preview"` because no released client carries the v1.39
+core, not because the artifacts are unproven. It leaves `preview` when a
+*released* build of `ioscpm`, `cpmdroid` or `z80cpmw` carries a core of v1.39
+or later that lists 3.6.0 in `ROMWBW_SUPPORTED_RELEASES` — at which point flip
+`status` and `default` in `versions/3.6.0/version.json`, regenerate, and
+re-publish so the index and the GitHub flag move together.
 
 `tools/publish_release.sh` is undocumented — it appears neither in this document's
 original text nor in `tools/README.md`'s script table — and it sets `--prerelease`

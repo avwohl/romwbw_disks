@@ -70,7 +70,7 @@ compatibility is negotiated per call: an emulator that predates a function
 answers with `A` nonzero from its unknown-function path. Do not test for a
 specific value there. Unknown functions in `0xE0`–`0xEF` reach
 `HBIOSDispatch::handleEXT`, whose default arm sets `HBR_NOFUNC`
-(`romwbw_emu/src/hbios_dispatch.cc:2705`), and `HBR_NOFUNC` is `-3`
+(`romwbw_emu/src/hbios_dispatch.cc:2718`), and `HBR_NOFUNC` is `-3`
 (`romwbw_emu/src/hbios_dispatch.h:30`), so it arrives in `A` as `0xFD`, not
 `0xFF`. `0xFF` is a *different* answer: it is `HBR_FAILED`, which `0xE8` and
 `0xEA` also return when the call exists but no file is open. Both are nonzero,
@@ -111,24 +111,38 @@ version's `generation` counter and nothing else.
 **Client app versions.** iOS `MARKETING_VERSION`, Android `versionName`,
 Windows `VERSION_STRING` are unrelated and stay unrelated.
 
-## The one thing v0 cannot fix on its own
+## The one thing v0 could not fix on its own — now fixed upstream
 
-A client can *fetch* two RomWBW versions today. It cannot *run* both.
+A client could *fetch* two RomWBW versions and run only one.
 
-`emu_validate_rom_hcb` in `romwbw_emu/src/emu_init.cc:52-60` compares the
-loaded ROM's HCB bytes at `0x105`/`0x106` against the compile-time
-`ROMWBW_PIN_VER_BYTE` / `ROMWBW_PIN_UPD_BYTE` from `src/romwbw_pin.h`, and
-returns a refusal that `emu_load_rom` turns into a failed load. `romwbw_emu`'s
-`ROMWBW_PIN_STR` is `"3.5.1"` today, so the binary physically cannot load a
-3.6.0 ROM.
+`emu_validate_rom_hcb` in `romwbw_emu/src/emu_init.cc` compared the loaded
+ROM's HCB bytes at `0x105`/`0x106` against the compile-time
+`ROMWBW_PIN_VER_BYTE` / `ROMWBW_PIN_UPD_BYTE` from `src/romwbw_pin.h` and
+returned a refusal that `emu_load_rom` turned into a failed load. With
+`ROMWBW_PIN_STR` at `"3.5.1"`, the binary physically could not load a 3.6.0
+ROM.
 
-So until `romwbw_emu` makes the pin runtime state read from the loaded ROM,
-"pick a RomWBW version" means "the client filters the index down to the one
-version it was built for". The catalog is designed for the eventual runtime
-pin — `hbios.ver_byte` / `upd_byte` are in every index entry precisely so a
-client can filter without downloading anything — but the emulator change is
-what turns filtering into choosing. [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md)
-lists what that change touches.
+**As of `romwbw_emu` v1.39 the version is runtime state read from the loaded
+ROM.** One binary boots any release in that core's `ROMWBW_SUPPORTED_RELEASES`
+— today both of the ones published here — and the five sites that report a
+version to the guest all derive it from the ROM: `HBF_SYSVER`, the NVRAM
+checksum seed, the HBIOS ident block, the CBIOS page-zero stamp at
+`0x42`/`0x43`, and the load-time check. What that check now refuses is a
+release the core has never been *run* against, which is a different and much
+narrower thing.
+
+None of that changed v0. The catalog was designed for it — `hbios.ver_byte` /
+`upd_byte` are in every index entry precisely so a client can filter without
+downloading anything — and those fields keep their meaning. A client that
+filters is still correct; a client that offers the whole list is now also
+correct, and gets a version it can actually boot. Adding the capability to the
+emulator is not an interface change, which is exactly what
+[the compatibility rules](#when-to-bump-to-v1) predict: nothing was removed,
+repurposed or renamed in the catalog.
+
+What still gates the user-visible feature is client work, not emulator work:
+iOS, Android and Windows all ship a binary built before v1.39.
+[CLIENT_MIGRATION.md](CLIENT_MIGRATION.md) lists what each has to change.
 
 ## When to bump to v1
 

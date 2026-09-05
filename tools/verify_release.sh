@@ -16,8 +16,11 @@
 #     check.
 #
 #  2. Every ROM's HCB at 0x103 reads 'W' 0xA8 then the two packed version bytes
-#     for its RomWBW release.  emu_validate_rom_hcb refuses to load a ROM that
-#     fails this, so a ROM that fails it here is one no client can boot.
+#     for its RomWBW release.  Those four bytes are what the emulator and every
+#     client read to decide what a ROM is.  emu_validate_rom_hcb refuses a ROM
+#     with no readable HCB, and refuses one naming a release that core has not
+#     been checked against, so a ROM that fails this check here is one no
+#     client can boot.
 #
 #  3. Every bootable image's CBIOS banner names the same release.  A ROM and a
 #     disk from different releases make the guest print

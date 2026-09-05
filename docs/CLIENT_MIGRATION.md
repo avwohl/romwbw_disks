@@ -1,51 +1,68 @@
 # Client migration
 
 What each client has to change to consume the interface-v0 catalog, and in what
-order. Nothing here has been done yet — no client change is in scope until the
-artifacts in this repo have settled. They are published as of 2026-09-04.
+order. The artifacts are published as of 2026-09-04, and **step 1 — the
+emulator blocker — is done as of 2026-09-05** (`romwbw_emu` v1.39). Everything
+still outstanding is client work.
 
 Read [INTERFACE_V0.md](INTERFACE_V0.md) first for what the contract promises,
 and [CATALOG_SCHEMA.md](CATALOG_SCHEMA.md) for the documents themselves.
 
-## The blocker comes first
+## The blocker: done
 
 Everything below is distribution plumbing and can be done incrementally. One
-thing cannot.
+thing could not, and it is now finished.
 
-`emu_validate_rom_hcb` (`romwbw_emu/src/emu_init.cc:52-60`) compares the loaded
-ROM's HCB bytes at `0x105`/`0x106` against the compile-time
-`ROMWBW_PIN_VER_BYTE` / `ROMWBW_PIN_UPD_BYTE` from `src/romwbw_pin.h`, and
-returns a refusal that `emu_load_rom` turns into a failed load
-(`emu_init.cc:117-121`). A build pinned to 3.5.1 cannot load a 3.6.0 ROM at
-all, and `romwbw_pin.h:38` pins that tree to `3.5.1` today.
+`emu_validate_rom_hcb` compared the loaded ROM's HCB bytes at `0x105`/`0x106`
+against the compile-time `ROMWBW_PIN_VER_BYTE` / `ROMWBW_PIN_UPD_BYTE` from
+`src/romwbw_pin.h` and returned a refusal that `emu_load_rom` turned into a
+failed load. A build pinned to 3.5.1 could not load a 3.6.0 ROM at all.
 
-Until that becomes runtime state read from the ROM being loaded, "let the user
-pick a RomWBW version" is not achievable: a client can only filter the index
-down to the single version its own binary can boot.
+**`romwbw_emu` v1.39 makes it runtime state read from the ROM being loaded.**
+All five sites now derive the version from the loaded ROM rather than holding
+a copy — and the two RAM-only ones were the dangerous ones, because
+`roms/verify_romwbw_pin.sh` reads bytes out of a built ROM and cannot see
+emulated RAM at all:
 
-Making it runtime state touches five places, and two of them are invisible to
-every existing verifier because they exist only in RAM:
-
-| Site | What it does |
+| Site | What it does now |
 |---|---|
-| `emu_init.cc:52-60` | the refusal itself — must compare against the ROM, then keep what it found |
-| `hbios_dispatch.cc:1537` | `HBF_SYSVER` returns `ROMWBW_PIN_DE`; this is what the guest CBIOS compares against |
-| `hbios_dispatch.cc:697-707` | the NVRAM checksum seed XORs the version bytes |
-| `emu_init.cc:283`, `:289` | the HBIOS ident block, written into RAM |
-| `emu_init.cc:324-325` | the CBIOS page-zero stamp at `0x42`/`0x43`, written into RAM |
+| `emu_init.cc` `emu_validate_rom_hcb` | refuses only a release the core has never been run against, naming the supported list; `--allow-untested-romwbw` overrides |
+| `hbios_dispatch.cc` `HBF_SYSVER` | returns the loaded ROM's bytes — this is what the guest CBIOS compares against |
+| `hbios_dispatch.cc` `recalcNvramChecksum` | seeds from the loaded ROM's version bytes |
+| `emu_init.cc` `emu_setup_hbios_ident` | HBIOS ident block, written into RAM |
+| `emu_init.cc` `emu_init_ram_bank` | CBIOS page-zero stamp at `0x42`/`0x43`, written into RAM |
 
-The two RAM-only copies are the dangerous ones: `roms/verify_romwbw_pin.sh`
-checks assembled bytes in a built ROM, so it cannot see them. If they are
-missed, the ROM loads and the guest still reports the wrong version.
+Deriving rather than storing is what closes the RAM-only hazard: there is no
+cached value to go stale and no initialisation order to get wrong, only a read
+of ROM bank 0. Verified from inside the guest — a CP/M program that reads
+`0x42`/`0x43`, the ident block and `HBF_SYSVER` reports `3510` under a 3.5.1
+ROM and `3600` under a 3.6.0 ROM, on all of them.
 
-Note also that `emu_hbios.asm` in this repo now takes its version bytes from a
+Note also that `emu_hbios.asm` in this repo takes its version bytes from a
 generated `romwbw_ver.inc` (`src/emu_hbios.asm:9`, written by
-`tools/build_rom.sh:50` out of `versions/<ver>/version.json`), so bank 0 is no
-longer a place the pin has to be edited. That part is already done.
+`tools/build_rom.sh:50` out of `versions/<ver>/version.json`), so bank 0 was
+never a place the pin had to be edited.
 
-## Interim posture: filter, do not choose
+### The API a client uses now
 
-Before the runtime pin lands, a client should:
+`ROMWBW_PIN_STR` and friends no longer exist. `emu_init.h` offers instead:
+
+| Call | Use |
+|---|---|
+| `emu_romwbw_supported_list()` | `"3.5.1, 3.6.0"` — for an About screen shown before any ROM is loaded |
+| `emu_romwbw_release_loaded(mem, &r)` | the release actually running, once a ROM is in memory |
+| `emu_romwbw_release_of_image(buf, n, &r)` | inspect a downloaded image before offering it in a picker |
+| `emu_romwbw_release_str(r, buf, n)` | `"3.6.0"` for display |
+| `emu_romwbw_release_supported(r)` | can this build boot it? |
+
+`emu_romwbw_release_of_image()` is the useful one for a download UI: it answers
+from the first 264 bytes, so a client can check an image it has just fetched
+without loading it into the emulator.
+
+## Interim posture: filter, do not choose — still, for now
+
+The emulator can load either release. **No released client contains that
+emulator yet**, and each ships one bundled ROM. So until a client rebuilds:
 
 1. fetch `index-v0.json`
 2. keep only entries whose `hbios.ver_byte` and `hbios.upd_byte` match the
@@ -56,7 +73,12 @@ It can do that without downloading a catalog, let alone a 512 KB ROM. If the
 list comes back empty, that is a real condition worth reporting — it means this
 repo has stopped publishing the RomWBW version that build can run.
 
-After the runtime pin lands, the same code offers the whole list instead.
+Once a client is rebuilt on v1.39 or later, the same code offers the whole list
+instead — and should ask the core rather than assume, since a client can now be
+newer or older than the core it compiles: keep an entry when
+`emu_romwbw_release_supported({ver_byte, upd_byte})` says yes. Hardcoding
+"offer everything" would break the moment this repo publishes a release the
+client's core has not been checked against.
 
 ## Per-client work
 
@@ -81,8 +103,9 @@ inconsistency, so remove it rather than reproducing it.
 in one flat directory named by catalog filename, and all three record saved
 state the same way:
 
-- iOS `Documents/Disks/`; `EmulatorProfile.swift:46,48` holds `romFilename:
-  String` and `diskFilenames: [String]`
+- iOS `Documents/Disks/`; the four disk slots are persisted as bare filenames
+  under the `"selectedDisks"` `UserDefaults` key
+  (`EmulatorViewModel.swift:116-120`)
 - Android `externalFilesDir/Disks` plus a `ModifiedDisks` directory
   (`DiskDownloadManager.kt:50`, `:241`); disk slots persisted as bare filenames
   under `disk_slot_0..3` (`SettingsRepository.kt:37,61-69`)
@@ -189,12 +212,20 @@ client.
 
 ### romwbw_emu
 
-- Make the pin runtime state (above). This is the whole feature.
+- ~~Make the pin runtime state (above). This is the whole feature.~~ **Done**,
+  v1.39. Along the way two things were found that had nothing to do with the
+  version and everything to do with why a wrong one could survive:
+  - `src/makefile` had **no header dependencies at all** (`%.o: %.cc` and
+    nothing else), so editing `romwbw_pin.h` — the file whose entire job was to
+    be the single source of truth about the RomWBW version — rebuilt nothing
+    and left the old value compiled in, silently. `-MMD -MP` now records them.
+  - `roms/verify_romwbw_pin.sh` was **never run by anything** — not `make
+    test`, not any CI job. `make -C src test` runs it now.
 - `src/w8.asm`, `src/r8.asm`, `src/emu_hbios.asm` and `src/emu_rom.asm` now
   live in this repo. Removing them there breaks
   `disks/rebuild_disk_utils.sh:62-66`, `disks/verify_disk_utils.sh`,
   `roms/build_from_source.sh` and `make -C src test` (whose `test` target runs
-  `verify_disk_utils.sh` at `src/Makefile:163`); those either point here or go
+  `verify_disk_utils.sh` at `src/makefile:191`); those either point here or go
   away.
 - `disks/disks.xml` is a dead third catalog — `version="6"`, 21 entries, zero
   `<sha256>` elements, read by nothing in that tree, diverged from the
@@ -204,10 +235,10 @@ client.
   real thing, so nothing in its content distinguishes it from a genuine build
   input — and `verify_romwbw_pin.sh` will not catch it either way, because it
   prunes `archive/` outright (`-name archive` in the find expression it builds
-  at `:121`, deliberate and documented in the comment above it). Delete it or
+  at `:185`, deliberate and documented in the comment above it). Delete it or
   rename it so it cannot be mistaken for a build input. This repo never uses it
   — `tools/fetch_romwbw.sh` pulls the real `Package.zip` and pins it by sha256.
-- `.github/workflows/release.yml:125` and `test.yml:95`, `:178` and `:242` all
+- `.github/workflows/release.yml:125` and `test.yml:95`, `:194` and `:258` all
   do a bare `git clone https://github.com/avwohl/cpmemu.git` — the default
   branch, unpinned, and the workflow comments say so in as many words.
   `cpmemu/README.md:835` claims CI pins `CPMEMU_REF 9a94e8d`. One of those is
@@ -241,14 +272,20 @@ for the family, and no client needs an assembler.
 
 ## Suggested order
 
-1. **romwbw_emu:** make the pin runtime state. Nothing user-visible until this
-   lands.
-2. **This repo:** publish, then leave it alone while clients catch up.
+1. ~~**romwbw_emu:** make the pin runtime state.~~ **Done** (v1.39,
+   2026-09-05). Nothing user-visible yet — no released client carries it.
+2. ~~**This repo:** publish, then leave it alone while clients catch up.~~
+   **Done** (2026-09-04). `tools/boot_test.sh` was updated to ask the emulator
+   which releases it can run rather than assume one; it passes against both the
+   old and the new core.
 3. **Each client, release A:** write the storage/profile migration for
    versioned filenames. Ship it. Do not change any URL yet.
-4. **Each client, release B:** switch to the index URL, filter by the compiled
-   pin, read `base_url` from the catalog. The legacy `disks-v0-<ver>.xml` on
-   each tag exists so this step can happen before any parser is rewritten.
+4. **Each client, release B:** switch to the index URL, filter to the release
+   the client's own bundled ROM declares — there is no compiled-in pin to read
+   any more, so ask the image: `emu_romwbw_release_of_image()` on the bundled
+   ROM answers from its first 264 bytes. Read `base_url` from the catalog. The
+   legacy `disks-v0-<ver>.xml` on each tag exists so this step can happen
+   before any parser is rewritten.
 5. **Each client, release C:** offer the RomWBW version list for real, now that
    the emulator can load either ROM.
 6. **Cleanup:** delete the cpmdroid hot-patch, `verify-disk-assets.sh`,

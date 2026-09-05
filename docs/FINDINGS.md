@@ -113,6 +113,18 @@ Items 7, 8 and 9 are the dangerous ones. They exist only in RAM after
 them, and nothing derives them from `romwbw_pin.h`. Re-pinning by editing the
 header and the assembly leaves those three untouched and silent.
 
+> **Superseded 2026-09-05 for items 4-9.** The table above is a record of the
+> pre-migration system and is left as measured. `romwbw_emu` v1.39 replaced
+> items 4, 5, 6, 7, 8 and 9 with a read of the loaded ROM's HCB, so all six now
+> derive from item 10 rather than from item 1 — including the three that were
+> "**no**" in the Checkable column, which are now checkable the only way they
+> ever could be: from inside the guest. A CP/M program reading `0x42`/`0x43`,
+> the HBIOS ident block, the block `0xFFFC` points at, and `HBF_SYSVER` reports
+> `3510` under a 3.5.1 ROM and `3600` under a 3.6.0 one. Item 1 survives as `ROMWBW_DEFAULT_*`, meaning only "the release
+> this tree's own artifacts are cut from", plus `ROMWBW_SUPPORTED_RELEASES`,
+> the list of releases the core will load. Items 2, 3 and 11 are unchanged in
+> `romwbw_emu`; in *this* repo they come from a generated `romwbw_ver.inc`.
+
 Measured in the ROMs this repository builds, at `0x100`:
 
     3.5.1:  c3 00 02 57 a8 35 10 00 04 a0 0f 10
@@ -155,10 +167,12 @@ Consequences:
 - 3.5.0 against 3.5.1 does **not** warn. The nibbles are `3` and `5` either way.
 - 3.5.x against 3.6.x **always** warns, in both directions.
 
-On the emulator side the value comes from `HBF_SYSVER` at
-`romwbw_emu/src/hbios_dispatch.cc:1537`, which returns `ROMWBW_PIN_DE`. So the
-message means "the disk image and the compiled-in pin disagree about
-major.minor", nothing more and nothing less.
+On the emulator side the value comes from `HBF_SYSVER`
+(`romwbw_emu/src/hbios_dispatch.cc`), which since v1.39 returns the version
+bytes read out of the loaded ROM; before that it returned the compile-time
+`ROMWBW_PIN_DE`. So the message means "the disk image and the loaded ROM
+disagree about major.minor", nothing more and nothing less — which is why it is
+now the only thing enforcing the ROM/disk pairing.
 
 Most boot slices also carry the literal banner `CBIOS v<ver> [WBW]`, which is
 the only thing that distinguishes builds the version bytes cannot — see the dev
@@ -329,9 +343,10 @@ Three more storage facts that matter:
   `Documents/Disks/disks_catalog.xml`.
 - **NVRAM is stored under one key.** `nvramKey = "emulatorNvram"`
   (`EmulatorViewModel.swift:199`). RomWBW's `NVSW_CHECKSUM` XORs the version
-  bytes into the seed (`hbios_dispatch.cc:704-705`), so a blob saved under
-  3.5.1 fails validation under a 3.6.0 ROM and silently resets to defaults.
-  That single key has to become per-version.
+  bytes into the seed (`hbios_dispatch.cc`, `recalcNvramChecksum`), so a blob
+  saved under 3.5.1 fails validation under a 3.6.0 ROM and silently resets to
+  defaults. That single key has to become per-version — the seed follows
+  whichever ROM is loaded, so on a rebuilt client one install can boot both.
 
 Also measured: the iOS ROM list is hardcoded to one element —
 
@@ -445,7 +460,7 @@ them and believe them.
 *Actually true:* `v1.4.12` is `prerelease=false` and **is** `releases/latest`.
 Whatever happened after publication, the flag is not set now. The two CHANGELOG
 entries that say the same thing (`ioscpm/CHANGELOG.md:343,570` and
-`romwbw_emu/CHANGELOG.md:36`) are dated historical records rather than standing
+`romwbw_emu/CHANGELOG.md:118`) are dated historical records rather than standing
 instructions, but they are equally false as descriptions of today.
 
 **2. `cpmemu/README.md:835` claims romwbw_emu's CI pins a `CPMEMU_REF`.**
@@ -454,10 +469,10 @@ It says the workflows "clone `avwohl/cpmemu` and check out a pinned
 `CPMEMU_REF`, `9a94e8d` at the v4.7.0 tag."
 
 *Actually true:* there is no pin. `romwbw_emu/.github/workflows/release.yml:125`
-and `.github/workflows/test.yml:95` (and `test.yml:178` and `:242`) all do a
+and `.github/workflows/test.yml:95` (and `test.yml:194` and `:258`) all do a
 bare `git clone https://github.com/avwohl/cpmemu.git` with no ref and no
 subsequent `git checkout`. All four track cpmemu's default branch. The
-workflows' own comments say so — `test.yml:176-177` reads "like them it tracks
+workflows' own comments say so — `test.yml:192-193` reads "like them it tracks
 cpmemu's default branch rather than a ref" — and `release.yml:6` notes that
 `CPMEMU_REF` "existed here" in the past tense. The README describes a pin that
 was removed.
@@ -494,21 +509,26 @@ tidying.
 Stated as questions because nobody has decided, not because the answers are
 obvious.
 
-**Does the RomWBW pin become runtime state, or does each client ship
-per-version builds?** This is the hard blocker and it is not a documentation
-problem. `romwbw_emu/src/emu_init.cc:52-60`, `emu_validate_rom_hcb`, compares
-the loaded ROM's HCB bytes against the compile-time macros
-`ROMWBW_PIN_VER_BYTE` / `ROMWBW_PIN_UPD_BYTE` from `src/romwbw_pin.h` and
-returns a refusal string that `emu_load_rom` turns into a failed load. **A
-binary pinned to 3.5.1 physically cannot load a 3.6.0 ROM.** Two more sites
-derive from the same macro — `hbios_dispatch.cc:1537` (`HBF_SYSVER`) and
-`hbios_dispatch.cc:697-707` (the NVRAM checksum seed) — and two further
-hard-coded `0x35`/`0x10` pairs exist only in RAM where no verifier can see
-them: the HBIOS ident block at `emu_init.cc:283` and `:289`, and the CBIOS
-page-zero stamp at `0x42`/`0x43` at `emu_init.cc:324-325`. Until that changes,
-"pick a RomWBW version" means "filter the index down to the one version this
-binary was built for". This repository publishes a catalog that supports either
-answer; it does not choose.
+**~~Does the RomWBW pin become runtime state, or does each client ship
+per-version builds?~~ ANSWERED, 2026-09-05: runtime state.** `romwbw_emu`
+v1.39 reads the release out of the loaded ROM's HCB every time it is asked, at
+all five sites — `emu_validate_rom_hcb`, `HBF_SYSVER`, the NVRAM checksum seed,
+the HBIOS ident block and the CBIOS page-zero stamp at `0x42`/`0x43`. The last
+two are the ones that existed only in RAM where no verifier could see them, and
+deriving rather than storing is what removed the hazard rather than relocating
+it: there is no cached copy and no initialisation order, only a read of ROM
+bank 0. One binary now boots both published releases; the load-time check
+refuses only a release the core has never been *run* against, and names the
+list it can run.
+
+Measured from inside the guest, since that is the only place the two RAM-only
+sites are visible: a CP/M program reading `0x42`/`0x43`, the HBIOS ident block,
+the block `0xFFFC` points at, and `HBF_SYSVER` reports `3510` under a 3.5.1 ROM
+and `3600` under a 3.6.0 ROM — all four, both releases.
+
+What is left is client work, not a design question: no released client carries
+that core yet, so a shipped client should still filter the index down to the
+version it was built for. See [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md).
 
 **Should ROMs be downloaded, or stay bundled?** Two separate reasons to be
 careful. App Store review posture: a bundled ROM is a reviewed asset, a
@@ -543,12 +563,25 @@ published alongside it, retired, or compared against upstream's first, is
 undecided.
 
 **Has anyone diffed v3.6.0's `Source/HBIOS/proto.asm` against the HBIOS
-functions the emulator core actually implements?** No. `romwbw_pin.h:22-26`
-lists it as required work when changing the pin, and
-`romwbw_emu/DOWNSTREAM.md:424-430` repeats it. It is still open. All 124 `BF_*`
-equates in `hbios.inc` are byte-identical between the two releases, which is
-reassuring but is not the same check: identical function *numbers* say nothing
-about changed *semantics* inside a function. Nobody has done the semantic pass.
+functions the emulator core actually implements?** The question was
+unanswerable as posed: **there is no `proto.asm` in any RomWBW release.**
+`romwbw_emu/DOWNSTREAM.md` now says so outright — the files that carry that
+information are `Source/HBIOS/hbios.asm` and `Source/Doc/SystemGuide.md` — and
+`romwbw_emu/src/romwbw_pin.h` no longer names the file at all: its "Adding a
+release" list is build, boot, round-trip `R8`/`W8`, add the `X()` line.
+
+What was done instead, on 2026-09-05, is that 3.6.0 was **run**: CP/M 2.2,
+banked CP/M 3, ZPM3, Z3PLUS, ZSDOS and NZCOM all boot from the published
+images; `R8`/`W8` round-trip a file byte-identically, exercising the private
+`0xE1`–`0xEA` block including the `HBF_HOST_CAPS` interlock; the boot loader
+validates NVRAM, so the checksum seed agrees with the ROM's own SYSCONF; and a
+mismatched ROM/disk pair still warns in both directions.
+
+The semantic pass over `hbios.asm` (263,153 bytes in 3.5.1, 267,954 in 3.6.0)
+is still not done, and identical `BF_*` equates are still not a substitute for
+it. Booting six operating systems exercises much of that surface without
+enumerating it. But "supports 3.6.0" is no longer a claim about artifacts
+alone.
 
 **Does `cpmemu/util/cpm_disk.py` have one home or two?** This repository now
 vendors it at `tools/cpm_disk.py` as the canonical copy. `cpmemu`'s copy stays
