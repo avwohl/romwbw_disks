@@ -227,9 +227,9 @@ deliberately unpinned in CI.
 | Client | Safe to remove |
 |---|---|
 | iOSCPM | the `um80` mentions in `README.md` and `docs/DISK_W8FIX_RUNBOOK.md`; nothing in the build |
-| CPMDroid | the `um80` mention in `README.md`; the hot-patch at `app/src/main/cpp/emu_io_android.cpp:1129-1147` (section 6) |
+| CPMDroid | the `um80` mention in `README.md`; the hot-patch in `app/src/main/cpp/emu_io_android.cpp` (the `W8_BROKEN` scan, section 6) |
 | Z80CPMW | the `um80` mention in `README.md`; `packaging/scripts/verify-disk-assets.sh` — **but see below** |
-| all three | `tools/check-disk-pins.sh` (section 10) |
+| all three | `tools/check-disk-pins.sh` (section 11) |
 
 ### The one thing that must not simply disappear
 
@@ -504,7 +504,54 @@ corrected the comment — `src/emu_hbios.asm:367` now names what the word
 actually is, and `:369-373` records that the duplicate must not be removed as
 tidying.
 
-## 10. Open questions this repository does not answer
+## 10. The two hd1k_combo images differ only in slack space
+
+Measured 2026-09-05, because the v0 migration made it a decision every client had
+to take: after the rename a migrated device holds `hd1k_combo-v0-3.5.1.img` whose
+bytes came from ioscpm `v1.4.12`, while the catalog naming it publishes a
+different hash.
+
+Of the 20 disks in ioscpm's `release_assets/disks.xml` and the 20 in
+`catalog/v0/3.5.1/catalog.json`, nineteen agree on `sha256`. `hd1k_combo` does
+not:
+
+	v1.4.12	89b8ae1aaa6867dc515c3511b34c4f0c311a77e99ff71066f5a774bef99cde1d
+	v0 3.5.1	0ca4ec60cb8bca71b8f0287c4b634c3126887be483db9b59b41bdff424f89303
+
+Both are 51,380,224 bytes. The published `v1.4.12` asset was fetched and
+compared byte for byte against the image this repository builds:
+
+	differing bytes	2,342 of 51,380,224, in 90 runs
+	range	0x00105561 - 0x002fa4c6, every one inside slice 0
+	slices 1-5	byte-identical, no run falls outside slice 0
+	slice 0 directory	identical file list, 94 entries each
+	all 94 files	byte-identical, extracted and compared with cpmcp
+	r8.com, w8.com	1,792 bytes each, byte-identical
+
+So nothing reachable through the filesystem differs. The 2,342 bytes are CP/M
+slack: unallocated blocks still holding a deleted file's content, plus a few
+`0xE5` directory-padding bytes. Two toolchains wrote the same 94 files into the
+same slice and left different garbage in the space between them.
+
+**Decision: the pre-v0 combo is accepted as equivalent, not refreshed.** Making
+every migrated user spend 49 MB to replace an image whose every file is already
+byte-identical is not defensible, and cellular users would pay it first.
+
+The equivalence is recorded in each client's migration, not in the catalog, and
+that placement is the point. It is a fact about what the migration renamed - "the
+file I just renamed came from the pre-v0 catalog and hashes to 89b8ae1a" - not a
+fact about what v0 publishes. The catalog stays exactly as published, on an
+immutable tag, saying what this repository builds. Verification stays meaningful
+too: a corrupt or truncated combo still fails, and so does an unrelated file
+under that name; the only hash additionally accepted is one specific known image
+at one specific size, and only for a file the migration itself renamed.
+
+Two things this does **not** license. A client must not accept the alternate for
+an image it downloaded - a fresh download must match the catalog. And the
+alternate must not survive a re-download: once a device fetches the canonical
+combo, the exception has no further use on that device.
+
+## 11. Open questions this repository does not answer
 
 Stated as questions because nobody has decided, not because the answers are
 obvious.

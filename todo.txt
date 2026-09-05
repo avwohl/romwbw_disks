@@ -35,21 +35,23 @@ or the v0 catalog reader.  Flip status in versions/3.6.0/version.json, regenerat
 and republish only when a shipped ioscpm, cpmdroid or z80cpmw can load a 3.6.0
 ROM.  docs/RELEASING.md's "Known open work" states the same criterion.
 
-- [ANY] MIGRATING USERS GET ONE 49 MB RE-DOWNLOAD THAT BUYS THEM NOTHING, and it
-is this repository's doing.  Measured, not assumed: of the 20 images in ioscpm's
-v1.4.12 disks.xml and the 20 in catalog/v0/3.5.1/catalog.json, nineteen are
-byte-identical and hd1k_combo is not - 89b8ae1a... there, 0ca4ec60... here.  Both
-carry the same fixed r8.com and w8.com with the HBF_HOST_CAPS probe; the bytes
-differ because this repository builds its own combo, not because anything was
-wrong with the old one.  The consequence is that after the rename every migrated
-device holds hd1k_combo-v0-3.5.1.img whose hash disagrees with the catalog that
-names it, and each client answers differently: ioscpm's ledger will refresh it
-unattended, z80cpmw reads SupersededPristine but nothing calls the code that
-would act on it, and cpmdroid compares filenames only.  Decide once, here, what
-that verdict should mean before any client grows an Update button - the honest
-options are to leave it (a hash that moved because the catalog moved), or to
-publish a 3.5.1 generation 2 whose combo is byte-identical to v1.4.12's.  Do NOT
-edit the published catalog: it is on the immutable v0-romwbw-3.5.1 tag.
+- [ANY] DECIDED 2026-09-05: the pre-v0 hd1k_combo is accepted as equivalent and
+NOT refreshed.  What is left is carrying that into the clients.  The two images
+were compared byte for byte - the published v1.4.12 asset against the one built
+here - and all 2,342 differing bytes of 51,380,224 fall inside slice 0, in CP/M
+slack and directory padding.  The slice 0 directory lists the same 94 files,
+every one of them is byte-identical including r8.com and w8.com, and slices 1-5
+do not differ at all.  Two toolchains wrote the same files into the same slice
+and left different garbage between them.  docs/FINDINGS.md section 10 has the
+measurements and the reasoning; spending 49 MB of every migrated user's data to
+replace an image whose every file already matches is not defensible.
+  The equivalence belongs in each client's MIGRATION, not in the catalog: it is
+  a fact about what the migration renamed, not about what v0 publishes, and the
+  3.5.1 catalog is on an immutable tag either way.  ioscpm is the only client
+  that would act unattended and so the only one that must change; z80cpmw
+  computes the verdict and calls nothing, cpmdroid compares filenames.  Two
+  limits on the exception: never accept it for an image the client DOWNLOADED,
+  and drop it once a device has fetched the canonical combo.
 
 - [ANY] the HBIOS dispatcher diff for 3.6.0 is still not done.  Booting six
 operating systems and round-tripping R8/W8 exercises a great deal of that
