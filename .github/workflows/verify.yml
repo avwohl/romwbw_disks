@@ -3,16 +3,24 @@ name: verify
 # Two jobs, split by cost.
 #
 #   quick  runs on every push.  Assembles w8/r8, asserts the capability
-#          interlock is still in the built w8.com, and checks the committed
+#          interlock is still in the built w8.com, checks the committed
 #          catalogs are internally consistent and have not drifted from the
-#          manifests.  No upstream download, so it finishes in under a minute.
+#          manifests, and checks this repository's Z80 sources still agree with
+#          romwbw_emu's.  No upstream RomWBW download - the only fetch is a
+#          blobless sparse clone of romwbw_emu's src/ and roms/, a couple of
+#          megabytes - so it finishes in under a minute.
 #
 #   full   builds everything from the real upstream Package.zips and verifies
 #          every artifact against its catalog entry.  ~420MB of downloads, so
-#          it runs on demand and weekly rather than per push.
+#          it runs on demand and weekly rather than per push.  It also takes
+#          romwbw_emu's disks/ so the drift check can compare the assembled
+#          r8.com/w8.com, which quick cannot: that is a 51MB image.
 #
 # um80 is deliberately NOT pinned.  A um80 output change is meant to turn this
 # red: the fix is to rebuild and republish, not to freeze an old assembler.
+# romwbw_emu is not pinned either, and for the same reason: the drift check
+# exists to notice when the two trees stop agreeing, so it tracks that repo's
+# default branch rather than a ref that would hide the drift.
 
 on:
   push:
@@ -48,6 +56,21 @@ jobs:
 
       - name: Catalogs are self-consistent and have not drifted
         run: python3 tools/check_committed.py
+
+      # src/ and roms/ only.  This job builds no ROM and takes no 51MB combo,
+      # so the artifact half of the drift check cannot run here at all - it is
+      # the source half that this gate is for, and it is the half that catches
+      # an edit made to one copy and not the other.  The script prints "info"
+      # for each artifact it cannot reach rather than passing quietly; the full
+      # job below is where those become real comparisons.
+      - name: Fetch romwbw_emu to compare sources against
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/avwohl/romwbw_emu.git ../romwbw_emu
+          git -C ../romwbw_emu sparse-checkout set src roms
+
+      - name: Z80 sources still agree with romwbw_emu
+        run: sh tools/check_source_drift.sh
   full:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -68,6 +91,19 @@ jobs:
 
       - name: Build everything and verify
         run: sh tools/build_all.sh
+
+      # disks/ as well here: with the ROMs built above and romwbw_emu's tracked
+      # combo present, this is the complete check - the three identical sources,
+      # emu_hbios.asm's parameterisation, both trees' emu_avw.rom, and the
+      # assembled r8.com/w8.com that only a real extraction can compare.
+      - name: Fetch romwbw_emu to compare sources and artifacts against
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/avwohl/romwbw_emu.git ../romwbw_emu
+          git -C ../romwbw_emu sparse-checkout set src roms disks
+
+      - name: Z80 sources and built artifacts still agree with romwbw_emu
+        run: sh tools/check_source_drift.sh
 
       - name: The committed catalogs match what was just built
         run: |
