@@ -34,7 +34,7 @@ one-command answer:
 ```
 Published here:
   3.5.1            stable
-  3.6.0            preview
+  3.6.0            stable
 
 Upstream wwarthen/RomWBW (newest carried here: 2026-03-28):
   v3.7.0-dev.13      2026-08-02  prerelease - NOT publishable
@@ -48,7 +48,7 @@ Upstream wwarthen/RomWBW (newest carried here: 2026-03-28):
 | RomWBW | Upstream tag | Released | Status | HCB bytes | ROMs | Disks |
 |---|---|---|---|---|---|---|
 | 3.5.1 | `v3.5.1` | 2025-05-21 | stable (default) | `35 10` | 2 | 20 |
-| 3.6.0 | `v3.6.0` | 2026-03-28 | preview | `36 00` | 2 | 24 |
+| 3.6.0 | `v3.6.0` | 2026-03-28 | stable | `36 00` | 2 | 24 |
 
 `Package.zip` sha256, as pinned in `versions/<ver>/version.json`:
 
@@ -67,9 +67,12 @@ Both releases ship the same two ROMs — `emu_avw` (upstream
 per-version catalog JSON and legacy XML that ship alongside them add about
 19 KB and 23 KB respectively.
 
-3.6.0 is marked `preview` and `default: false` because no released client can
-load its ROM at all. That is a client-side pin, not anything about the
-artifacts; see [INTERFACE_V0.md](INTERFACE_V0.md) and
+3.6.0 was promoted from `preview` to `stable` on 2026-09-05, once `romwbw_emu`
+v1.39 could boot it. `default: false` stays: no released client carries that
+core, so 3.5.1 is still the one to pick when a client has a choice. A shipped
+client is not endangered by the promotion — it filters the index by
+`hbios.ver_byte` against what its own core runs, so 3.6.0 never survives that
+filter on a pre-v1.39 build. See [INTERFACE_V0.md](INTERFACE_V0.md) and
 [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md).
 
 ## How a RomWBW version is represented here
@@ -407,14 +410,23 @@ six operating systems and round-tripping the private block exercises a great
 deal of that surface but does not enumerate it. A 3.6.0 guest program nobody
 ran could still call something the dispatcher stubs out.
 
-### Why 3.6.0 is still `preview`
+### Why 3.6.0 is `stable`, and why `default` is still false
 
-`versions/3.6.0/version.json` still says `"status": "preview"` and
-`"default": false`, and that is still right — but for a different reason than
-the one recorded in its own notes. It is no longer "no emulator can load
-this". It is that **no released client carries the v1.39 core**: iOS, Android
-and Windows all ship a binary built before it. A user offered 3.6.0 by a
-released client would download 234 MB and get a refusal.
+`versions/3.6.0/version.json` says `"status": "stable"` as of 2026-09-05. What
+changed is the emulator, not a client: `romwbw_emu` v1.39 reads the version out
+of the loaded ROM, boots this release, and `tools/boot_test.sh` asserts it on
+every run.
+
+**No released client carries that core**, and that is not the blocker it looks
+like. A user cannot be offered 3.6.0 by a build that cannot boot it, because a
+client keeps only the index entries whose `hbios.ver_byte` / `hbios.upd_byte`
+its own core supports; on a pre-v1.39 build 3.6.0 is filtered out before any
+status is read. The 234 MB download that would end in a refusal is prevented by
+the version bytes, not by the label.
+
+`"default": false` stays for as long as that is true. Promoting a release says
+it is sound; making it the default says a client should prefer it, and nothing
+should prefer a release its own shipped builds cannot run.
 
 The note inside the published catalog still describes the old refusal, citing
 `emu_init.cc:52-60` and `ROMWBW_PIN_STR`. It is not corrected in place because
@@ -578,11 +590,13 @@ Substitute the real version number for `3.7.0` throughout.
     between tags — GitHub release asset URLs cannot be redirected, so every tag
     has to stay live for as long as any client points at it.
 
-12. **Leave it `preview` until a *released client* can run it.** Flip
-    `status` and `default` in `version.json` and regenerate only after a
-    shipped client can actually load that ROM — not merely after the emulator
-    core can. 3.6.0 has been sitting at `preview` for exactly this reason: the
-    core boots it, and no released client carries that core yet.
+12. **Leave it `preview` until the emulator can boot it, and `default: false`
+    until a released client can.** Those are two different gates and 3.6.0 shows
+    why: it was promoted to `stable` on 2026-09-05 once `romwbw_emu` v1.39 booted
+    it and `boot_test.sh` asserted it, while `default` stays false because no
+    shipped client carries that core. Promotion is index-only — edit `status`,
+    run `tools/gen_catalog.py --index`, publish `index-v0.json` to the floating
+    `catalog-v0` tag, and do not re-cut the version's immutable assets.
 
 Adding a RomWBW version is not an interface change. No `v0` to `v1` bump, no
 client rebuild, no change to any existing tag —

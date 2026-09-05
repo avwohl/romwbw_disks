@@ -334,7 +334,9 @@ its files before a v0 name can land beside a pre-v0 one.
 
 **What is left is not writing but running.** No store build of any client
 exists, none of this has been compiled, and until a released client carries it
-the published index keeps 3.6.0 at `"status": "preview"`.
+3.6.0 was promoted to `"status": "stable"` on 2026-09-05 anyway, because a
+shipped client filters it out by `hbios.ver_byte` rather than by reading
+`status` — the bytes are the safety mechanism, not the label.
 
 ## What must never happen
 

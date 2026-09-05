@@ -209,13 +209,16 @@ away:
 
     One emulator binary booted v3.5.1 v3.6.0 - 2 published releases.
 
-**3.6.0 stays `preview` in the published index, and the reason is now a
-different one.** It is no longer "no emulator can load this". It is that no
-*released client* carries the new core yet: iOS, Android and Windows all ship
-a binary built before v1.39. Until they do, a client should still filter the
-index down to the version it was built for — which is why every index entry
-carries `hbios.ver_byte` and `hbios.upd_byte`, so it can filter without
-downloading anything. [docs/CLIENT_MIGRATION.md](docs/CLIENT_MIGRATION.md)
+**3.6.0 is `stable` in the published index as of 2026-09-05**, promoted on the
+strength of the emulator booting it rather than of a client shipping it. Be
+clear about what that does and does not mean: no *released client* carries the
+v1.39 core — iOS, Android and Windows all ship a binary built before it — so a
+shipped client still cannot load a 3.6.0 ROM. It does not have to be told not
+to. It filters the index down to the release its own core can run, using the
+`hbios.ver_byte` and `hbios.upd_byte` in every entry, and 3.6.0 simply does not
+survive that filter on a pre-v1.39 build. That is what those two bytes are for,
+and why promoting a release a shipped client cannot boot is safe rather than a
+trap. [docs/CLIENT_MIGRATION.md](docs/CLIENT_MIGRATION.md)
 lists what each client has to change.
 
 The published `versions/3.6.0/version.json` note still describes the old

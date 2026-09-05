@@ -147,7 +147,8 @@ newer or older than the core it links: keep an entry when
 survives. Same field, same job; only the number of survivors differs. No
 released client carries a v1.39 core yet, so in every shipped app "pick a
 RomWBW version" still means "filter to the one release this binary was built
-for" — which is also why 3.6.0 is published `"status": "preview"`. See
+for" — and why a client must filter rather than trust `status`: 3.6.0 is
+published `"status": "stable"` yet no shipped client can boot it. See
 [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md).
 
 ## 3. catalog-v0-&lt;ver&gt;.json

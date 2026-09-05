@@ -496,14 +496,21 @@ That is luck, not design.
 
 The third one needs saying. "Preview" is data, not release metadata: it is
 `status` in `versions/<ver>/version.json`, which flows into `catalog.status` and
-into each index entry. RomWBW 3.6.0 is `"status": "preview"` and
-`"default": false` today because no released client can load a 3.6.0 ROM. That
-was once a property of the emulator core — `emu_validate_rom_hcb` compared the
-loaded ROM's HCB bytes against a compile-time pin and refused — and since
-`romwbw_emu` v1.39 it is not: the core reads the version out of the ROM and
-boots either release. What keeps 3.6.0 in preview now is that **no released
-client contains that core**, so the conclusion is unchanged and the reason is
-not. A client reads that status out of the index. It does not, and must not,
+into each index entry. RomWBW 3.6.0 was `"status": "preview"` while no emulator
+could load it — `emu_validate_rom_hcb` compared the loaded ROM's HCB bytes
+against a compile-time pin and refused. Since `romwbw_emu` v1.39 the core reads
+the version out of the ROM and boots either release, and 3.6.0 was promoted to
+`"stable"` on 2026-09-05. `"default": false` stays: promoting a release and
+recommending it are different acts, and 3.5.1 is still what a client should pick
+when it has a choice.
+
+Note what promotion did NOT wait for, because it is the interesting part: no
+released client carries that core, so no shipped build can boot a 3.6.0 ROM.
+That is safe because a client filters the index by `hbios.ver_byte` /
+`hbios.upd_byte` against what its own core can run, so 3.6.0 never survives the
+filter on a pre-v1.39 build. `status` is advice for a client that CAN boot a
+release; the version bytes are what stop one that cannot. A client reads that
+status out of the index. It does not, and must not,
 infer anything from a GitHub badge. Encoding the same fact in two places is how ioscpm ended up with four
 documents describing a flag that was never set.
 
@@ -700,12 +707,22 @@ not re-run by any script.
 Still not done: a function-by-function read of 3.6.0's `hbios.asm` against the
 emulator's dispatcher. See [ROMWBW_VERSIONS.md](ROMWBW_VERSIONS.md).
 
-3.6.0 stays `"status": "preview"` because no released client carries the v1.39
-core, not because the artifacts are unproven. It leaves `preview` when a
-*released* build of `ioscpm`, `cpmdroid` or `z80cpmw` carries a core of v1.39
-or later that lists 3.6.0 in `ROMWBW_SUPPORTED_RELEASES` — at which point flip
-`status` and `default` in `versions/3.6.0/version.json`, regenerate, and
-re-publish so the index and the GitHub flag move together.
+3.6.0 was promoted to `"status": "stable"` on 2026-09-05, on the emulator
+evidence rather than on a shipped client: `romwbw_emu` v1.39 boots it and
+`tools/boot_test.sh` asserts the boot, the banner, the absence of a mismatch
+warning and an R8/W8 round trip on every run. No released client carries that
+core, and that is deliberately not a blocker — a shipped client filters 3.6.0
+out by `hbios.ver_byte`, so the entry is invisible to the builds that could not
+boot it. `"default": false` stays until a released client can actually offer it.
+
+**How a promotion is done, since it is not a rebuild.** Edit `status` in
+`versions/<ver>/version.json`, run `tools/gen_catalog.py --index`, and publish
+only `index-v0.json` to the floating `catalog-v0` tag. Do not re-cut the
+version's own assets: `catalog-v0-<ver>.json` is on the immutable
+`v0-romwbw-<ver>` tag and keeps the status it was published with, which is why
+`tools/check_committed.py` allows a catalog saying `preview` under a manifest
+saying `stable` and nothing else. The index is what a client reads `status`
+from, so the index is what has to move.
 
 `tools/publish_release.sh` is undocumented — it appears neither in this document's
 original text nor in `tools/README.md`'s script table — and it sets `--prerelease`

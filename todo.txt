@@ -28,12 +28,21 @@ F5 default-disk path, the Settings write-back and the release picker.  Each
 client's MANUAL_CHECKS.md lists what a person has to drive.  Until that happens
 none of this is known to work.
 
-- [ANY] 3.6.0 stays "status": "preview" and "default": false, and the exit
-condition is a released client, not a working emulator.  romwbw_emu v1.39 boots
-it and tools/boot_test.sh proves it, but no build in any store carries that core
-or the v0 catalog reader.  Flip status in versions/3.6.0/version.json, regenerate
-and republish only when a shipped ioscpm, cpmdroid or z80cpmw can load a 3.6.0
-ROM.  docs/RELEASING.md's "Known open work" states the same criterion.
+- [ANY] 3.6.0 is "status": "stable" as of 2026-09-05 and "default": false, and
+those are two different gates on purpose.  Status was promoted on the emulator
+evidence: romwbw_emu v1.39 boots it and tools/boot_test.sh asserts the boot, the
+banner, the absence of a mismatch warning and an R8/W8 round trip every run.
+default stays false because no released client carries that core, and a client
+should not PREFER a release its own shipped builds cannot run.  A shipped client
+is not endangered by the promotion - it filters the index by hbios.ver_byte
+against what its core supports, so 3.6.0 never survives that filter on a
+pre-v1.39 build; the version bytes are the safety mechanism, the label is not.
+  Move default to 3.6.0 when a released ioscpm, cpmdroid or z80cpmw carries a
+  v1.39+ core.  Promotion is index-only: edit version.json, run
+  tools/gen_catalog.py --index, publish index-v0.json to the floating catalog-v0
+  tag, and never re-cut the immutable per-version assets - which is why
+  check_committed.py now allows a published catalog saying "preview" under a
+  manifest saying "stable", in that direction only.
 
 - [ANY] DECIDED 2026-09-05: the pre-v0 hd1k_combo is accepted as equivalent and
 NOT refreshed.  What is left is carrying that into the clients.  The two images

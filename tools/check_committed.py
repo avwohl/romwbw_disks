@@ -33,6 +33,12 @@ def bad(msg):
     print("FAIL  %s" % msg)
 
 
+def info(msg):
+    # Said out loud but not counted. Reserved for a divergence that is expected
+    # and explained; anything that might be a mistake goes through bad().
+    print("info  %s" % msg)
+
+
 def load(*p):
     with open(os.path.join(ROOT, *p)) as f:
         return json.load(f)
@@ -64,9 +70,26 @@ def main():
             bad("%s catalog says romwbw_version=%r" % (ver, cat["romwbw_version"]))
         if cat["release_tag"] != "%s-romwbw-%s" % (IFACE, ver):
             bad("%s release_tag is %r" % (ver, cat["release_tag"]))
+        # status is the ONE field allowed to differ here, and only in this
+        # direction: the per-version catalog is published on the immutable tag
+        # v0-romwbw-<ver> and records what the version was when its assets were
+        # cut, while version.json and the index carry the live value. Promoting
+        # preview -> stable moves the live value and must NOT re-cut a published
+        # asset, so the two legitimately diverge from that moment on.
+        #
+        # The invariant that actually protects a client is the index one below,
+        # because the index is what a client reads status from (CATALOG_SCHEMA
+        # section 6, RELEASING section 6) - and that one stays a hard failure.
+        # Promotion is one-way, so a catalog claiming 'stable' while the manifest
+        # says 'preview' is not a promotion and is still an error.
         if cat["status"] != vmeta["status"]:
-            bad("%s status %r disagrees with version.json %r"
-                % (ver, cat["status"], vmeta["status"]))
+            if cat["status"] == "preview" and vmeta["status"] == "stable":
+                info("%s catalog says 'preview' and version.json says 'stable' - "
+                     "promoted after its assets were cut, which is expected; the "
+                     "index is authoritative and is checked below" % ver)
+            else:
+                bad("%s status %r disagrees with version.json %r"
+                    % (ver, cat["status"], vmeta["status"]))
         if cat["hbios"] != vmeta["hbios"]:
             bad("%s catalog hbios block disagrees with version.json" % ver)
         if not cat["base_url"].endswith("/%s/" % cat["release_tag"]):
