@@ -1,9 +1,15 @@
 # Client migration
 
 What each client has to change to consume the interface-v0 catalog, and in what
-order. The artifacts are published as of 2026-09-04, and **step 1 — the
-emulator blocker — is done as of 2026-09-05** (`romwbw_emu` v1.39). Everything
-still outstanding is client work.
+order. The artifacts are published as of 2026-09-04, the emulator blocker was
+cleared on 2026-09-05 (`romwbw_emu` v1.39), and **all three clients were
+migrated the same day** — see "Suggested order" for what each commit carries.
+
+**None of it has been compiled.** The migration was written on a Linux machine
+with no Xcode, no Android SDK or NDK, and no MSVC or Windows. What could be
+checked without those is recorded in each client's own changelog, tier by tier;
+what remains is in each client's `MANUAL_CHECKS.md`. Nothing here has run on a
+phone, a tablet or a PC, and no store build exists.
 
 Read [INTERFACE_V0.md](INTERFACE_V0.md) first for what the contract promises,
 and [CATALOG_SCHEMA.md](CATALOG_SCHEMA.md) for the documents themselves.
@@ -82,20 +88,29 @@ client's core has not been checked against.
 
 ## Per-client work
 
+> **This section describes each client as it stood BEFORE the migration**, and
+> is kept because it is the reasoning the migration was written against. Much
+> of what it names is now gone: `releaseTag` / `RELEASE_TAG`,
+> `checkCatalogVersionAndInvalidate`, `parseDiskCatalogXML` and `parseDisksXml`
+> were deleted rather than repointed. Line numbers here were already drifting
+> before that and should be read as "look for this symbol", not as an address —
+> several were measured wrong twice. For what the code does now, read the
+> client's own changelog entry.
+
 ### All three GUI clients
 
 **Replace the single pin.** Today each holds a constant with the same value:
 
 | Client | File | Symbol |
 |---|---|---|
-| ioscpm | `iOSCPM/Views/EmulatorViewModel.swift:161` | `releaseTag = "v1.4.12"` |
+| ioscpm | `iOSCPM/Views/EmulatorViewModel.swift` | `releaseTag = "v1.4.12"` |
 | cpmdroid | `app/src/main/java/com/awohl/cpmdroid/data/DiskCatalogRepository.kt:45` | `RELEASE_TAG = "v1.4.12"` |
 | z80cpmw | `z80cpmw/DiskCatalog.cpp:38` | `RELEASE_TAG = L"v1.4.12"` |
 
 Each interpolates it into a `disks.xml` URL and a download base. Those become:
 a constant index URL, plus a selected RomWBW version, plus `base_url` read from
 the catalog. Watch the trailing-slash difference — iOS's base has none and the
-parser appends `"/" + filename` (`EmulatorViewModel.swift:2515`); Android's and
+parser appends `"/" + filename` (in its XML parser's `didEndElement`); Android's and
 Windows's have one. Reading `base_url` from the catalog removes that
 inconsistency, so remove it rather than reproducing it.
 
@@ -105,7 +120,7 @@ state the same way:
 
 - iOS `Documents/Disks/`; the four disk slots are persisted as bare filenames
   under the `"selectedDisks"` `UserDefaults` key
-  (`EmulatorViewModel.swift:116-120`)
+  (written by `persistSelectedDisks()`)
 - Android `externalFilesDir/Disks` plus a `ModifiedDisks` directory
   (`DiskDownloadManager.kt:50`, `:241`); disk slots persisted as bare filenames
   under `disk_slot_0..3` (`SettingsRepository.kt:37,61-69`)
@@ -136,7 +151,7 @@ client.
 
 ### ioscpm
 
-- `checkCatalogVersionAndInvalidate` (`EmulatorViewModel.swift:1619-1633`)
+- `checkCatalogVersionAndInvalidate` (`EmulatorViewModel.swift`)
   compares the catalog's version against UserDefaults `"catalogVersion"` and,
   when it differs, deletes the downloaded images the catalog names — disks the
   user imported themselves are kept. That key must become per-(interface,
@@ -176,7 +191,8 @@ client.
   `getAttribute` calls, so Android is blind to the catalog version attribute
   and carries none of the iOS wipe hazard. If it starts reading `generation`,
   it must not adopt the deletion behaviour with it.
-- **Delete the W8 hot-patch** at `app/src/main/cpp/emu_io_android.cpp:1129-1147`.
+- **Delete the W8 hot-patch** in `app/src/main/cpp/emu_io_android.cpp` (the
+  `W8_BROKEN` scan; mind the `LOGI` immediately above it, which stays).
   It scans every loaded disk image for the bytes
   `fe 41 d8 fe 5b d0 c6 00` and pokes byte 7 to `0x20`, repairing a `w8.com`
   that um80 0.3.42 miscompiled (`add a,'a'-'A'` assembled as `add a,0`). The
@@ -206,7 +222,12 @@ client.
   an old emulator an unchecked host path. It now lives here, in
   `tools/build_utils.sh` (asserted at build time) and `tools/verify_catalog.py`
   (asserted against every published image that carries `w8.com`).
-- `DiskCatalog.h:236-248` documents the fetch contract as fire-and-forget with
+- **This client does not persist bare filenames at all.** `config::DiskConfig::path`
+  is a full absolute path, so its migration has to rewrite paths and rename
+  files together — the "map each stored bare filename" recipe above is the iOS
+  and Android shape, not this one. The ledger is the part keyed on a folded
+  filename.
+- `DiskCatalog.h` documents the fetch contract as fire-and-forget with
   no cancel and no wait. That does not model "this ROM must land before the
   emulator can start", so downloading ROMs needs more than a URL change here.
 
@@ -278,23 +299,35 @@ for the family, and no client needs an assembler.
    **Done** (2026-09-04). `tools/boot_test.sh` was updated to ask the emulator
    which releases it can run rather than assume one; it passes against both the
    old and the new core.
-3. **Each client, release A:** write the storage/profile migration for
-   versioned filenames. Ship it. Do not change any URL yet.
-4. **Each client, release B:** switch to the index URL, filter to the release
-   the client's own bundled ROM declares — there is no compiled-in pin to read
-   any more, so ask the image: `emu_romwbw_release_of_image()` on the bundled
-   ROM answers from its first 264 bytes. Read `base_url` from the catalog. The
-   legacy `disks-v0-<ver>.xml` on each tag exists so this step can happen
-   before any parser is rewritten.
-5. **Each client, release C:** offer the RomWBW version list for real, now that
-   the emulator can load either ROM.
-6. **Cleanup:** delete the cpmdroid hot-patch, `verify-disk-assets.sh`,
-   `romwbw_emu/disks/disks.xml`, the duplicated Z80 sources, and the dev
-   snapshot.
+3. ~~**Each client, release A:** the storage/profile migration for versioned
+   filenames.~~ **Written** 2026-09-05: `ioscpm` build 63
+   (`CatalogMigration.swift`), `cpmdroid` 1.26 (`V0Migration.kt`), `z80cpmw`
+   (`DiskMigrationV0.cpp`). All three rename rather than copy — 19 of the 20
+   published 3.5.1 images are byte-identical to their pre-v0 selves, and a
+   rename is what preserves the size and modification time the disk ledgers
+   validate against.
+4. ~~**Each client, release B:** switch to the index URL.~~ **Written** the
+   same day. Every `RELEASE_TAG` / `releaseTag` is deleted rather than
+   repointed; `base_url` comes from the catalog document, so the
+   trailing-slash inconsistency between the three clients is gone rather than
+   reproduced.
+5. ~~**Each client, release C:** offer the RomWBW version list.~~ **Written**
+   the same day, filtered by `emu_romwbw_release_supported()` in all three
+   rather than by a hardcoded list, so a client that is older or newer than its
+   core still offers only what that core can boot.
+6. **Cleanup:** ~~the cpmdroid hot-patch~~ (deleted 2026-09-05),
+   `verify-disk-assets.sh`, `romwbw_emu/disks/disks.xml`, the duplicated Z80
+   sources, and the dev snapshot.
 
-Steps 3 and 4 are separate on purpose. Combining them means a build that both
-renames every stored file and changes where files come from, and if it goes
-wrong there is no way to tell which half did it.
+Steps 3, 4 and 5 were written as separate numbered releases inside each client
+even though they were written together, because the ordering is the safety
+argument: the rename runs before anything can fetch a catalog, so a device that
+arrives at the later build without ever running the earlier one still renames
+its files before a v0 name can land beside a pre-v0 one.
+
+**What is left is not writing but running.** No store build of any client
+exists, none of this has been compiled, and until a released client carries it
+the published index keeps 3.6.0 at `"status": "preview"`.
 
 ## What must never happen
 
