@@ -81,13 +81,30 @@ tools/verify_catalog.py against every published image carrying w8.com - but note
 before deleting it that it fails 8 of the 20 v0 images for an unrelated reason,
 so repointing it is not a one-line change.
 
-- [ANY] cleanup still outstanding in the sibling repos, now that no client reads
-a disks.xml from an ioscpm tag: romwbw_emu/disks/disks.xml is a dead third
-catalog (version="6", 21 entries, no checksums, read by nothing), the duplicated
-Z80 sources in romwbw_emu/src that now live here, and
-romwbw_emu/archive/romwbw-v3.6.0/SBC_simh_std_v360.rom, a 3.6.0-dev.46 snapshot
-whose HCB is indistinguishable from the real release.  docs/CLIENT_MIGRATION.md
-step 6 is the list.  None of it is this repository's to delete.
+- [ANY] cleanup: three of four are DONE 2026-09-05, and the fourth must NOT be
+done.  Deleted: romwbw_emu/disks/disks.xml (an inventory of nothing - 19 of its
+21 filenames named images that repo does not track, and it never listed one of
+the two it does); romwbw_emu/archive/romwbw-v3.6.0/SBC_simh_std_v360.rom (a
+3.6.0-dev.46 snapshot whose HCB is indistinguishable from the release, so no
+version check anywhere could refuse it); and
+z80cpmw/packaging/scripts/verify-disk-assets.sh (that package has no images to
+check any more, and it was the last um80 consumer in any client).  Each was
+verified not to break anything first - `make -C src test` still passes in
+romwbw_emu with the three counts CI asserts unchanged, and verify_romwbw_pin.sh
+prints byte-identical output before and after the archive deletion.
+  NOT the duplicated Z80 sources in romwbw_emu/src.  That one is listed in
+  docs/CLIENT_MIGRATION.md step 6 and it is wrong: r8.asm, w8.asm, emu_hbios.asm
+  and emu_rom.asm have SEVEN live consumers in that repo, because romwbw_emu
+  still builds and verifies its own bundled ROM and its own two tracked disk
+  images from them - disks/rebuild_disk_utils.sh assembles them,
+  disks/verify_disk_utils.sh checks the result, roms/build_from_source.sh builds
+  the ROM, src/makefile's test target runs the first, and CI asserts the counts.
+  Deleting them is not cleanup; it would be a decision to make romwbw_emu a
+  consumer of romwbw_disks' published artifacts, and it would need a replacement
+  for all of that first.  Having the same file in two repositories is the price
+  of the two repositories building independently, and nothing currently checks
+  the copies against each other - that drift is worth a real item one day, but it
+  is not this one.
 
 - [ANY] the ioscpm release tags stay live forever regardless of the migration.
 Every build already in users' hands is hardwired to

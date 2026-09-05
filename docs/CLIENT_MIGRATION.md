@@ -250,15 +250,16 @@ client.
   away.
 - `disks/disks.xml` is a dead third catalog — `version="6"`, 21 entries, zero
   `<sha256>` elements, read by nothing in that tree, diverged from the
-  published one in version, count and schema. Delete it.
-- `archive/romwbw-v3.6.0/SBC_simh_std_v360.rom` is a `v3.6.0-dev.46` snapshot
+  published one in version, count and schema. **Deleted 2026-09-05.**
+- `archive/romwbw-v3.6.0/SBC_simh_std_v360.rom` was a `v3.6.0-dev.46` snapshot
   from 2025-12-12, not the release. Its HCB reads `36 00`, identical to the
   real thing, so nothing in its content distinguishes it from a genuine build
   input — and `verify_romwbw_pin.sh` will not catch it either way, because it
   prunes `archive/` outright (`-name archive` in the find expression it builds
-  at `:185`, deliberate and documented in the comment above it). Delete it or
-  rename it so it cannot be mistaken for a build input. This repo never uses it
-  — `tools/fetch_romwbw.sh` pulls the real `Package.zip` and pins it by sha256.
+  at `:185`, deliberate — though for `archive/cpm22/`'s sake, not this file's,
+  as that comment now says). **Deleted 2026-09-05**, recoverable as blob
+  `141a027d`. This repo never used it — `tools/fetch_romwbw.sh` pulls the real
+  `Package.zip` and pins it by sha256.
 - `.github/workflows/release.yml:125` and `test.yml:95`, `:194` and `:258` all
   do a bare `git clone https://github.com/avwohl/cpmemu.git` — the default
   branch, unpinned, and the workflow comments say so in as many words.
@@ -315,9 +316,15 @@ for the family, and no client needs an assembler.
    the same day, filtered by `emu_romwbw_release_supported()` in all three
    rather than by a hardcoded list, so a client that is older or newer than its
    core still offers only what that core can boot.
-6. **Cleanup:** ~~the cpmdroid hot-patch~~ (deleted 2026-09-05),
-   `verify-disk-assets.sh`, `romwbw_emu/disks/disks.xml`, the duplicated Z80
-   sources, and the dev snapshot.
+6. **Cleanup:** ~~the cpmdroid hot-patch~~, ~~`verify-disk-assets.sh`~~,
+   ~~`romwbw_emu/disks/disks.xml`~~ and ~~the dev snapshot~~ — all deleted
+   2026-09-05. **Not the duplicated Z80 sources**: listing them here was wrong.
+   `romwbw_emu` still builds and verifies its own ROM and its own two tracked
+   disk images from `r8.asm`, `w8.asm`, `emu_hbios.asm` and `emu_rom.asm`, so
+   they have live consumers in `disks/rebuild_disk_utils.sh`,
+   `disks/verify_disk_utils.sh`, `roms/build_from_source.sh` and `make -C src
+   test`. Removing them would be a decision to make that repo a consumer of what
+   this one publishes, and it needs a replacement for all of that first.
 
 Steps 3, 4 and 5 were written as separate numbered releases inside each client
 even though they were written together, because the ordering is the safety
