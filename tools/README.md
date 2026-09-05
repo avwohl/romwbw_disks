@@ -14,6 +14,7 @@ of it or a check on it.
 | `gen_catalog.py` | writes the catalogs and the index from the built artifacts — every size and hash computed, none transcribed |
 | `verify_catalog.py` | re-derives every claim a catalog makes, independently of the generator. Works on downloaded assets too. |
 | `verify_release.sh` | runs `verify_catalog.py` across every version and the index |
+| `check_source_drift.sh` | do this repo's Z80 sources still agree with romwbw_emu's? Three must be byte-identical; `emu_hbios.asm` must differ only by its generated `romwbw_ver.inc` parameterisation, which is proved by both trees building the same `emu_avw.rom`. Skips when romwbw_emu is not beside this repo. |
 | `boot_test.sh` | asks romwbw_emu which RomWBW releases it can run, then holds it to that answer: each one it can run must boot to a CP/M prompt with the right `CBIOS v<ver> [WBW]` banner and no mismatch warning, report the release it read from the ROM, warn on a disk from another release, and round-trip a file through `R8`/`W8`; each one it cannot must be refused by name. Skips when no emulator is present. |
 | `diskinfo.py` | the single source of image facts: bootability, CBIOS banner, directory contents |
 | `cpm_disk.py` | CP/M image creation and file transfer for sssd, hd1k and combo formats |

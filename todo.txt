@@ -102,9 +102,14 @@ prints byte-identical output before and after the archive deletion.
   Deleting them is not cleanup; it would be a decision to make romwbw_emu a
   consumer of romwbw_disks' published artifacts, and it would need a replacement
   for all of that first.  Having the same file in two repositories is the price
-  of the two repositories building independently, and nothing currently checks
-  the copies against each other - that drift is worth a real item one day, but it
-  is not this one.
+  of the two repositories building independently.  Nothing checked the copies
+  against each other until 2026-09-05; tools/check_source_drift.sh does now, and
+  they agree: r8.asm, w8.asm and emu_rom.asm are byte-identical, emu_hbios.asm
+  differs only by taking its version from the generated romwbw_ver.inc instead of
+  a hardcoded db 035h, and both trees build emu_avw.rom to the same
+  c7abc580... - which is what proves the parameterisation is the only difference.
+  r8.com and w8.com assemble identically too, so the two um80 installations agree
+  as well as the two sources do.
 
 - [ANY] the ioscpm release tags stay live forever regardless of the migration.
 Every build already in users' hands is hardwired to
