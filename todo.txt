@@ -41,7 +41,9 @@ caller to notice.  BF_DIOCAP had DE and HL swapped (a 49MB disk reported as
 65536MB, and COPYSL.COM reads the same value from CP/M, so it was never confined
 to a diagnostic screen); BF_DIODEVICE left the device-class nibble at zero;
 BF_VDAQRY had rows and columns reversed; BF_VDADEV had no case at all;
-BF_SNDQUERY ignored its subfunction; BF_CIOQUERY answered the wrong question.
+BF_SNDQUERY ignored its subfunction; and BF_CIOQUERY answered the wrong question
+- that last one being the only of the six 3.6.0 did NOT make reachable, since
+MODE.COM ships on the published images and read it wrong on 3.5.1 too.
 Also fixed: an unimplemented CIO, DIO or SYS function called emu_fatal(), so a
 guest could kill the emulator process by asking for something unimplemented.
   Two things this repository's own docs got WRONG and which are now corrected in

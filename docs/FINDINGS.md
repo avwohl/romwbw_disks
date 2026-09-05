@@ -571,8 +571,16 @@ it and reads back answers that were wrong all along with nothing to notice:
 `BF_DIOCAP` returned `DE` and `HL` swapped (a 49 MB disk reported as 65536MB, and
 `COPYSL.COM` reads the same value from CP/M), `BF_DIODEVICE` left the
 device-class nibble at zero, `BF_VDAQRY` had rows and columns reversed,
-`BF_VDADEV` had no case at all, `BF_SNDQUERY` ignored its subfunction, and
-`BF_CIOQUERY` answered the wrong question. Separately, an unimplemented CIO, DIO
+`BF_VDADEV` had no case at all, and `BF_SNDQUERY` ignored its subfunction.
+
+`BF_CIOQUERY` also answered the wrong question, and is the one of the six that
+3.6.0 did **not** make reachable: `MODE.COM` ships on the published images, asks
+the same question, and printed `COM0: 75,N,5,1` on 3.5.1 too. It needed two
+answers rather than one — `invntdev` ignores the status and tests the value,
+`MODE.COM` ignores the value and aborts on the status — so returning `$FFFF`
+alone fixed the inventory and made MODE print `COM0: 7372800,S,8,2`, worse than
+before. That was caught by running `MODE.COM` after the commit was already
+written, which is the only reason it was caught. Separately, an unimplemented CIO, DIO
 or SYS function called `emu_fatal()`, so a guest could kill the emulator process
 by asking for something unimplemented. All fixed in `romwbw_emu` aa52c9e.
 
