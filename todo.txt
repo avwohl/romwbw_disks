@@ -1,48 +1,95 @@
-create this as public repo romwbw_disks.
-Make a README based on the following
-List it as under constriction
-Projects in ../ cpmdroid ioscpm romwbw_emu z80cpmw
-All used roms and disk images for romwbw.
-We make up the rom, or at least part of it.
-The rom images need to match the disk images
-for the bios version.
-All of them I *think* now get thier disk images
-from ioscpm github release area.
-But that is really wierd as ioscpm is downstream
-from romwbw_emu.
-Currently there is only one version string.
-The problem is the version string really says
-the interface spec to the cpmemu emulator
-and its virtual devices.
-Since we last pulled in RomWBW they have done a major
-release to v3.6.0.  Under the current scheam there is
-no way to allow selecting the RomWBW version.  Also
-doing any sort of a release for new roms or disk images
-means new release of all the clients with no real changes.
-In this rewpo romwbw_disks, create a new public repo.
-Under a version string for the interface to the clients above
-lookup a list of rom versions.  For example, lets start the
-emulator interface version at v0.  So all the above would pull in
-a catalog.  In the first level of that would be RomWBW versions.
-Initially it would have v3.5.1 (what we currently support)
-and the new v3.6.0.
-Under that would be a list of rom images and disk images.
+Todo list.  Open items only.  What this repository is and why is in README.md;
+the contract is docs/INTERFACE_V0.md, the wire format docs/CATALOG_SCHEMA.md,
+the build and publish procedure docs/RELEASING.md, and what was measured about
+the old system docs/FINDINGS.md.  Finished work is in the commit messages that
+made it.
 
-In a client, say ios for exmple it would currently be built for v0
-interface to our stuff.  It would fetch some file json? and get the list
-of rom versions v3.5.1 v3.6.0 for the user to pick from.
+Every item carries a tag saying what a machine has to be able to do to take it,
+so a session on another OS can see at a glance what it can pick up.
 
-After that the user could pick disks.
-The disk file names should probably have the v0 and rom version in the file names?
-to be clear about what works with what.
-At this time no changes to the above clients. When everthing is ready here
-and published we can start changing the clients.
+The original brief that started this repository is gone from this file because
+every line of it is done: the two-level catalog exists and is published, disk
+and ROM filenames carry the interface and the RomWBW release, 3.5.1 and 3.6.0
+are both built and verified, w8.com/r8.com/emu_hbios.asm/emu_rom.asm live in
+src/, and all three GUI clients were migrated on 2026-09-05.  Its last question
+is answered under [ANY] below.
 
-I have no idea what needs to be changed to work with v3.6.0
-In the past when the rom version didnt matech a disk bios
-it would print a version mismatch.
+- [WINDOWS + MAC + ANDROID] NONE OF THE CLIENT MIGRATION HAS BEEN COMPILED, and
+that is the largest open item anywhere in this family.  ioscpm builds 63-64,
+cpmdroid 1.26-1.27 and z80cpmw's unreleased entry were all written on a Linux
+machine with no Xcode, no Android SDK or NDK and no MSVC.  What could be checked
+without them was, and each client's CHANGELOG says which tier each file reached:
+cpmdroid type-checked every Kotlin source and ran three JVM suites (20 + 14 + 3),
+z80cpmw compiled and ran tests/test_catalogv0.cpp (107 checks) and syntax-checked
+six more sources under mingw, ioscpm checked its project.pbxproj edits and its
+ObjC bridge by reading.  What reached no compiler at all is ioscpm's Swift, and
+z80cpmw's MainWindow.cpp and SettingsDialogWx.cpp - which between them hold the
+F5 default-disk path, the Settings write-back and the release picker.  Each
+client's MANUAL_CHECKS.md lists what a person has to drive.  Until that happens
+none of this is known to work.
 
-THe w8.com and r8.com and bios sources should be in this project.
-When we update the other client we can clean out any w8/r8/bios sources
-Make a note to check if the other clients still need um80 and if they
-still need to build any machine code
+- [ANY] 3.6.0 stays "status": "preview" and "default": false, and the exit
+condition is a released client, not a working emulator.  romwbw_emu v1.39 boots
+it and tools/boot_test.sh proves it, but no build in any store carries that core
+or the v0 catalog reader.  Flip status in versions/3.6.0/version.json, regenerate
+and republish only when a shipped ioscpm, cpmdroid or z80cpmw can load a 3.6.0
+ROM.  docs/RELEASING.md's "Known open work" states the same criterion.
+
+- [ANY] MIGRATING USERS GET ONE 49 MB RE-DOWNLOAD THAT BUYS THEM NOTHING, and it
+is this repository's doing.  Measured, not assumed: of the 20 images in ioscpm's
+v1.4.12 disks.xml and the 20 in catalog/v0/3.5.1/catalog.json, nineteen are
+byte-identical and hd1k_combo is not - 89b8ae1a... there, 0ca4ec60... here.  Both
+carry the same fixed r8.com and w8.com with the HBF_HOST_CAPS probe; the bytes
+differ because this repository builds its own combo, not because anything was
+wrong with the old one.  The consequence is that after the rename every migrated
+device holds hd1k_combo-v0-3.5.1.img whose hash disagrees with the catalog that
+names it, and each client answers differently: ioscpm's ledger will refresh it
+unattended, z80cpmw reads SupersededPristine but nothing calls the code that
+would act on it, and cpmdroid compares filenames only.  Decide once, here, what
+that verdict should mean before any client grows an Update button - the honest
+options are to leave it (a hash that moved because the catalog moved), or to
+publish a 3.5.1 generation 2 whose combo is byte-identical to v1.4.12's.  Do NOT
+edit the published catalog: it is on the immutable v0-romwbw-3.5.1 tag.
+
+- [ANY] the HBIOS dispatcher diff for 3.6.0 is still not done.  Booting six
+operating systems and round-tripping R8/W8 exercises a great deal of that
+surface without enumerating it, and identical BF_* equates prove the function
+numbers did not move, not that the behaviour behind one is unchanged.  What has
+to be read is RomWBW's Source/HBIOS/hbios.asm (263,153 bytes in 3.5.1, 267,954 in
+3.6.0) and Source/Doc/SystemGuide.md against the emulator's dispatcher.  There is
+no proto.asm and never was; docs/ROMWBW_VERSIONS.md carries the detail.
+
+- [ANY] tools/publish_release.sh is undocumented and contradicts section 6 of
+docs/RELEASING.md.  It appears in neither that document's procedure nor
+tools/README.md's script table, and at :177-178 it sets --prerelease from
+version.json's status - which section 6 rules out, because a client must read
+status from the index and never infer it from a GitHub flag.  Either wire it into
+RELEASING.md properly or delete it before someone runs it expecting section 4's
+behaviour.
+
+- [ANY] the original brief's last question is ANSWERED: only one client still
+needs um80, and no client builds Z80 machine code as part of its own build.
+Measured 2026-09-05 by grepping all three trees - the single consumer is
+z80cpmw/packaging/scripts/verify-disk-assets.sh, which assembles r8.asm and
+w8.asm to compare against what a disk image carries.  ioscpm and cpmdroid have
+none: ioscpm's Xcode project runs zero shell script build phases and holds no
+.asm at all.  That script can go once its 06 e9 cf HBF_HOST_CAPS probe is known
+to be covered here instead - it is, at tools/build_utils.sh build time and in
+tools/verify_catalog.py against every published image carrying w8.com - but note
+before deleting it that it fails 8 of the 20 v0 images for an unrelated reason,
+so repointing it is not a one-line change.
+
+- [ANY] cleanup still outstanding in the sibling repos, now that no client reads
+a disks.xml from an ioscpm tag: romwbw_emu/disks/disks.xml is a dead third
+catalog (version="6", 21 entries, no checksums, read by nothing), the duplicated
+Z80 sources in romwbw_emu/src that now live here, and
+romwbw_emu/archive/romwbw-v3.6.0/SBC_simh_std_v360.rom, a 3.6.0-dev.46 snapshot
+whose HCB is indistinguishable from the real release.  docs/CLIENT_MIGRATION.md
+step 6 is the list.  None of it is this repository's to delete.
+
+- [ANY] the ioscpm release tags stay live forever regardless of the migration.
+Every build already in users' hands is hardwired to
+releases/download/v1.4.12/, GitHub release asset URLs cannot be redirected, and
+in-app help on both ioscpm and z80cpmw still fetches help_index.json from
+avwohl/ioscpm/releases/latest.  Migrating the disk catalog frees nothing there;
+retiring those tags would break installed clients and in-app help at once.
