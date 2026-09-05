@@ -2,7 +2,7 @@
   "romwbw_version": "3.5.1",
   "released": "2025-05-21",
   "status": "stable",
-  "default": true,
+  "default": false,
   "hbios": {
     "major": 3,
     "minor": 5,

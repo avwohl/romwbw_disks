@@ -500,9 +500,9 @@ into each index entry. RomWBW 3.6.0 was `"status": "preview"` while no emulator
 could load it — `emu_validate_rom_hcb` compared the loaded ROM's HCB bytes
 against a compile-time pin and refused. Since `romwbw_emu` v1.39 the core reads
 the version out of the ROM and boots either release, and 3.6.0 was promoted to
-`"stable"` on 2026-09-05. `"default": false` stays: promoting a release and
-recommending it are different acts, and 3.5.1 is still what a client should pick
-when it has a choice.
+`"stable"` on 2026-09-05, and `"default"` moved to it the same day. Promoting a
+release and recommending it are different acts done for different reasons, and
+both were taken here deliberately rather than together by habit.
 
 Note what promotion did NOT wait for, because it is the interesting part: no
 released client carries that core, so no shipped build can boot a 3.6.0 ROM.
@@ -713,7 +713,17 @@ evidence rather than on a shipped client: `romwbw_emu` v1.39 boots it and
 warning and an R8/W8 round trip on every run. No released client carries that
 core, and that is deliberately not a blocker — a shipped client filters 3.6.0
 out by `hbios.ver_byte`, so the entry is invisible to the builds that could not
-boot it. `"default": false` stays until a released client can actually offer it.
+boot it. `"default"` moved to 3.6.0 on the same day.
+
+**What `default` on 3.6.0 obliges, and it is not nothing.** Every client bundles
+a 3.5.1 `emu_avw.rom` and none downloads a ROM, so a client that shipped today
+would preselect 3.6.0 disks and boot them against a 3.5.1 ROM - which the guest
+answers with `*** WARNING: HBIOS/CBIOS Version Mismatch ***`. ioscpm already
+says so before it happens (`romReleaseMismatchNotice`), so it is a warned path
+rather than a silent one, but it is a poor first run. Nothing is affected today
+because no released client reads this index at all. **Before any client ships,
+its bundled ROM has to move to 3.6.0, or `default` has to move back.** That is
+now the gate, and it is recorded in every client's todo.
 
 **How a promotion is done, since it is not a rebuild.** Edit `status` in
 `versions/<ver>/version.json`, run `tools/gen_catalog.py --index`, and publish

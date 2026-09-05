@@ -68,11 +68,11 @@ per-version catalog JSON and legacy XML that ship alongside them add about
 19 KB and 23 KB respectively.
 
 3.6.0 was promoted from `preview` to `stable` on 2026-09-05, once `romwbw_emu`
-v1.39 could boot it. `default: false` stays: no released client carries that
-core, so 3.5.1 is still the one to pick when a client has a choice. A shipped
-client is not endangered by the promotion — it filters the index by
-`hbios.ver_byte` against what its own core runs, so 3.6.0 never survives that
-filter on a pre-v1.39 build. See [INTERFACE_V0.md](INTERFACE_V0.md) and
+v1.39 could boot it, and `default` moved to it the same day. A shipped client is
+not endangered by either — it filters the index by `hbios.ver_byte` against what
+its own core runs, so 3.6.0 never survives that filter on a pre-v1.39 build. What
+`default` does oblige is that a client's bundled ROM move to 3.6.0 before it
+ships; see below. See [INTERFACE_V0.md](INTERFACE_V0.md) and
 [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md).
 
 ## How a RomWBW version is represented here
@@ -410,7 +410,7 @@ six operating systems and round-tripping the private block exercises a great
 deal of that surface but does not enumerate it. A 3.6.0 guest program nobody
 ran could still call something the dispatcher stubs out.
 
-### Why 3.6.0 is `stable`, and why `default` is still false
+### Why 3.6.0 is `stable` and `default`
 
 `versions/3.6.0/version.json` says `"status": "stable"` as of 2026-09-05. What
 changed is the emulator, not a client: `romwbw_emu` v1.39 reads the version out
@@ -424,9 +424,15 @@ its own core supports; on a pre-v1.39 build 3.6.0 is filtered out before any
 status is read. The 234 MB download that would end in a refusal is prevented by
 the version bytes, not by the label.
 
-`"default": false` stays for as long as that is true. Promoting a release says
-it is sound; making it the default says a client should prefer it, and nothing
-should prefer a release its own shipped builds cannot run.
+`"default": true` moved to 3.6.0 on the same day, and unlike the status change
+it carries an obligation. Every client bundles a 3.5.1 `emu_avw.rom` and none
+downloads a ROM, so a client shipping today would preselect 3.6.0 disks and boot
+them against a 3.5.1 ROM — `*** WARNING: HBIOS/CBIOS Version Mismatch ***`,
+which is precisely what the ROM/disk pairing rule exists to prevent. ioscpm
+warns before it happens rather than letting it surprise anyone
+(`romReleaseMismatchNotice`), and no released client reads this index at all, so
+nothing is affected today. **Before any client ships, its bundled ROM has to
+move to 3.6.0, or `default` has to move back.**
 
 The note inside the published catalog still describes the old refusal, citing
 `emu_init.cc:52-60` and `ROMWBW_PIN_STR`. It is not corrected in place because
@@ -593,8 +599,9 @@ Substitute the real version number for `3.7.0` throughout.
 12. **Leave it `preview` until the emulator can boot it, and `default: false`
     until a released client can.** Those are two different gates and 3.6.0 shows
     why: it was promoted to `stable` on 2026-09-05 once `romwbw_emu` v1.39 booted
-    it and `boot_test.sh` asserted it, while `default` stays false because no
-    shipped client carries that core. Promotion is index-only — edit `status`,
+    it and `boot_test.sh` asserted it, and `default` followed — but `default`
+    obliges a client's BUNDLED ROM to move to that release before it ships,
+    because no client downloads one. Promotion is index-only — edit `status`,
     run `tools/gen_catalog.py --index`, publish `index-v0.json` to the floating
     `catalog-v0` tag, and do not re-cut the version's immutable assets.
 

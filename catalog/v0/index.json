@@ -9,7 +9,7 @@
       "romwbw_version": "3.5.1",
       "label": "RomWBW 3.5.1",
       "status": "stable",
-      "default": true,
+      "default": false,
       "released": "2025-05-21",
       "hbios": {
         "major": 3,
@@ -37,7 +37,7 @@
       "romwbw_version": "3.6.0",
       "label": "RomWBW 3.6.0",
       "status": "stable",
-      "default": false,
+      "default": true,
       "released": "2026-03-28",
       "hbios": {
         "major": 3,
