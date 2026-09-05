@@ -28,30 +28,25 @@ F5 default-disk path, the Settings write-back and the release picker.  Each
 client's MANUAL_CHECKS.md lists what a person has to drive.  Until that happens
 none of this is known to work.
 
-- [ANY] THE CLIENTS MUST DOWNLOAD THE ROM FROM THE CATALOG.  This is the last
-version-coupled thing left in a client and the last thing standing between this
-family and the point of the whole exercise: a new RomWBW version should need a
-release HERE and nowhere else.
-  3.6.0 is "status": "stable" and "default": true as of 2026-09-05.  Every client
-still bundles a 3.5.1 emu_avw.rom and none fetches one, so a client shipping
-today would preselect 3.6.0 disks and boot them against a 3.5.1 ROM ->
-*** WARNING: HBIOS/CBIOS Version Mismatch ***.  ioscpm warns first
-(romReleaseMismatchNotice); nothing is affected today because no released client
-reads this index at all.
-  Re-bundling a 3.6.0 ROM in each client is NOT the fix and was wrongly written
-here first: it puts a client store release back on the critical path for every
-RomWBW bump, which is exactly the cost this repository was created to remove.
-  Everything needed is already published and mostly already parsed.  Each catalog
-carries roms[] with emu_avw flagged default, a sha256 and a size, under the same
-base_url as the disks; ioscpm already decodes roms[] (CatalogDocument.romEntries
-/ defaultROM, and it correctly does not assume emu_avw is present) and its bridge
-already exposes loadROMFromPath: and loadROMFromData: on the live path.  What is
-missing is the caller that hands them a downloaded path instead of a bundled one,
-plus the same in cpmdroid and z80cpmw.
-  Keep a bundled ROM as the FIRST-LAUNCH FALLBACK, not as the mechanism: the app
-should boot offline out of the box, and ioscpm's docs/ROM_ATTESTATION.md is an
-App Store filing naming emu_avw.rom as a reviewed asset.  Download every other
-release's ROM and verify it against the catalog sha256 exactly as disks are.
+- [ANY] DONE 2026-09-05: all three clients fetch the ROM from the catalog, so a
+new RomWBW version now needs a release HERE and nowhere else.  That was the point
+of the whole exercise and it is closed: ioscpm build 65 (cf8d2f7), cpmdroid
+bb0ac74, z80cpmw 17c72fa.  Each picks the ROM by roms[] default:true with a
+first-entry fallback, downloads it beside the disks under its versioned catalog
+filename, verifies size and sha256 before every use, and REFUSES to start a
+machine on a release whose ROM is absent or unverified rather than quietly
+booting the bundled one - which would recreate the mismatch invisibly.
+  The bundled ROM stays as the first-launch fallback and is used only for the
+release it declares.  It is byte-identical to the published emu_avw-v0-3.5.1.rom
+(c7abc580...), so a first launch on 3.5.1 needs no network at all.
+  None of it has been built as an application: no Xcode, no Android SDK/NDK, no
+MSVC.  What was compiled and run is recorded in each client's CHANGELOG, and each
+MANUAL_CHECKS.md lists what a person on a real machine has to drive.  Until that
+happens this is written, not working.
+  One consequence landed on ioscpm and is its to resolve: docs/ROM_ATTESTATION.md
+is an App Store filing stating the app INCLUDES emu_avw.rom.  Still true - but
+the app can now also DOWNLOAD a ROM, and "included with the application" and
+"fetched at runtime" are different claims to a reviewer.  ioscpm's todo has it.
 
 - [ANY] DECIDED 2026-09-05: the pre-v0 hd1k_combo is accepted as equivalent and
 NOT refreshed.  What is left is carrying that into the clients.  The two images
