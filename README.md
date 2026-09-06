@@ -43,7 +43,11 @@ at boot. So "which RomWBW release" is a property of the artifacts, and every
 artifact here says which one it is, in its filename and in the catalog.
 
 Until now there was **one** version string: a GitHub release tag compiled into
-each client, currently `v1.4.12`, pointing at the `avwohl/ioscpm` release area.
+each client, pointing at the `avwohl/ioscpm` release area. No tree carries that
+constant any more — the migration deleted all three on 2026-09-05 — but the
+builds users are running still do, and not all the same one: ioscpm's App Store
+1.5.1 is on `v1.4.12`, cpmdroid's Play 1.25 and z80cpmw's Store 1.0.23 on
+`v1.4.5`.
 That single string was doing three jobs — naming the disk images, naming the
 host-transfer ABI generation inside them, and implying which RomWBW release the
 client's bundled ROM matched. It had no way to say "RomWBW 3.5.1 *or* 3.6.0",

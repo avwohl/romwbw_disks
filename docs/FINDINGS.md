@@ -33,6 +33,19 @@ Z80CPMW's is a `std::wstring`, so it appears in built artifacts as UTF-16LE,
 not UTF-8. Any scanner that looks for the pin in a binary has to search both
 encodings.
 
+> **Superseded 2026-09-06.** All three declarations above were DELETED by the v0
+> migration on 2026-09-05, and each citation now lands on unrelated code. Each
+> was replaced by a comment above the new index constant quoting what it replaced
+> (`EmulatorViewModel.swift:386`, `DiskCatalogRepository.kt:94`,
+> `DiskCatalog.cpp:54`), so `git grep v1.4.12` at HEAD still returns plenty —
+> what it no longer returns is a live assignment, which is why
+> `check-disk-pins.sh`'s `pin_of` reads empty for all three ports. The shipped
+> builds still carry a pin and no longer agree on it: ioscpm 1.5.1 on `v1.4.12`,
+> cpmdroid Play 1.25 and z80cpmw Store 1.0.23 on `v1.4.5`. None of those builds
+> is tagged, so read the pin from the commit that minted the store's version
+> number, not from a tag. The rest of this section describes what was true
+> before the migration and is kept for that.
+
 Each interpolates the tag into a catalog URL and a download base:
 
     https://github.com/avwohl/ioscpm/releases/download/v1.4.12/disks.xml
@@ -643,7 +656,16 @@ has to decide whether the filing gets amended or whether iOS keeps a bundled
 
 **What replaces `tools/check-disk-pins.sh`?** It is byte-identical in all five
 repositories (md5 `47b7437050018c7cb4f7687d09909dc6` — verified in `ioscpm`,
-`cpmdroid`, `z80cpmw`, `romwbw_emu` and `cpmemu`). It hardcodes
+`cpmdroid`, `z80cpmw`, `romwbw_emu` and `cpmemu`).
+
+> **Superseded 2026-09-06.** That measurement was correct when taken and is not
+> correct now. The v0 migration edited two of the five copies: ioscpm's is now
+> `3b914238108cda57afd7a29d6d345027` (12,902 bytes, changed by `ffbe12c`) and
+> cpmdroid's is `f8ba1d5c2005e56a985d4da4b35fc964` (19,183 bytes, by `41829cb`
+> and `bb0ac74`). `z80cpmw`, `romwbw_emu` and `cpmemu` still carry the
+> 10,556-byte original. Everything below still describes all five.
+
+It hardcodes
 `CATALOG_REPO="avwohl/ioscpm"`, treats `hd1k_combo.img` as the single canary,
 greps each port for one quoted `vX.Y.Z`, and scans built artifacts for the
 regex `v1\.[0-9]+\.[0-9]+` in both UTF-8 and UTF-16LE. That regex matches

@@ -465,20 +465,92 @@ three clients key saved state on the filename, so every user's downloaded
 library would be stranded under names nothing fetches any more.
 
 **What made it safe this once, and why it will not be next time.** Immutability
-protects installed clients, and on 2026-09-06 there were none: no client tag
-contained the migration commit (`git tag --contains` was empty on all three), and
-every shipped build — ioscpm `v1.4.12`, cpmdroid `v1.24`, z80cpmw `v1.0.22-beta`
-— fetches `avwohl/ioscpm/releases/download/v1.4.5/disks.xml` and has never heard
-of this repository. Download counts on the v0 assets were 2 to 9, which is this
+protects installed clients, and on 2026-09-06 no shipped client could see these
+URLs at all. Download counts on the v0 assets were 2 to 9, which is this
 repository's own verification traffic. The rule was protecting nobody, so the
 respin cost nothing.
+
+**Do NOT establish that with `git tag --contains`.** That was the first check
+tried here and it is worthless on these repositories, because they release
+without tagging: on 2026-09-06 the App Store was serving ioscpm 1.5.1, released
+the previous day, and there is no `v1.5.1` tag in the repository at all — the
+newest tag is `v1.4.12`. An empty `git tag --contains` says nothing about what
+users have.
+
+**The check that does answer it** is what the SHIPPED SOURCE fetches. It takes
+three steps and every one of them has a trap in it, so the commands are given
+with the answers they produced on 2026-09-06:
+
+```sh
+cd ../ioscpm
+sh tools/check-store-version.sh              # 1. read ONLY "serves" and "released"
+
+grep -nE '^## Version|NOT COMPILED' CHANGELOG.md  # 2. newest build with NO marker
+git log --reverse --format='%h %ad %s' --date=short \
+    -S'CURRENT_PROJECT_VERSION = 61;' -- iOSCPM.xcodeproj/project.pbxproj | head -1
+
+git grep -n 'releaseTag\|index-v0' af0b9b2 -- iOSCPM   # 3. can that build see us?
+```
+
+**Step 1 yields a version, never a build,** and until 2026-09-06 the script did
+not admit that. A marketing version does not name one build — every ioscpm
+CHANGELOG heading from build 43 to build 65 reads `Version 1.5.1` — but the
+lookup returns only the version, and the script took the FIRST heading matching
+it. That is the newest build written, which is the opposite of the question. It
+printed `which is build 65` and then `The tree and the Store agree on what users
+have`, with four never-compiled builds sitting between tree and Store.
+
+It now answers with a range and narrows it by what could physically have been
+submitted: these clients are written on a Linux machine with no Xcode, each such
+CHANGELOG entry opens with a literal `**NOT COMPILED` line, and a build that
+never reached a compiler cannot be the one Apple is serving. Today it prints
+
+    which is         at most build 61  (1.5.1 heads builds 43-65;
+                     62, 63, 64, 65 NOT COMPILED, so none of those can be it)
+
+which is the honest answer. If you are reading an older transcript, or any tree
+whose copy of that script still prints a bare `which is build N` for a version
+that heads more than one build, that number is a guess — re-derive it with
+step 2.
+
+**Step 2 turns that build number into a commit,** and confirms it by hand.
+Builds 62-65 all carry a `NOT COMPILED` marker and were all committed on
+2026-09-05, after that day's release went live, which leaves build 61 as the
+newest build that could have been submitted. Then map build to commit — and note
+that `-S` matches the commit that ADDS a string and the one that REMOVES it, so
+`-S'CURRENT_PROJECT_VERSION = 61;'` returns both `af0b9b2` ("Build 61") and
+`5ae96ac` ("Build 62"); `--reverse | head -1` takes the one that set it. Do not
+assume every build number exists, either: `ffbe12c` went straight from 62 to 64,
+so `Build 63` is a CHANGELOG heading with no commit behind it.
+
+**Step 3 must grep the SYMBOL, not the URL.** The catalog URL is interpolated —
+`releaseTag = "v1.4.12"` on one line and `"...download/\(releaseTag)/disks.xml"`
+on the next (`EmulatorViewModel.swift:162-163` as of `af0b9b2`) — so
+`git grep 'v1\.4\.12/disks\.xml' af0b9b2 -- iOSCPM` matches NOTHING — an empty
+result that reads as the exact opposite of the truth. Keep the `-- iOSCPM`: drop
+it and the same grep hits `docs/DISK_CATALOG_PINNING.md` and
+`docs/DISK_DISTRIBUTION.md`, which are prose about the pin and not the pin. And
+keep the `releaseTag` half of the pattern, because a mistyped PATHSPEC fails
+silently — `git grep -l 'index-v0' af0b9b2 -- iOSCPMX` exits 1 with no output,
+indistinguishable from a real "this build cannot see us", whereas a mistyped rev
+is loud. The `releaseTag` hits are what prove the pathspec resolved.
+
+Those three steps gave: the Store serves 1.5.1, released 2026-09-05; that is
+build 61, which is `af0b9b2`; and `af0b9b2` fetches
+`avwohl/ioscpm/releases/download/v1.4.12/disks.xml` with no occurrence of
+`index-v0` anywhere in it — that first entered the tree at `ffbe12c`, builds
+63-64, which has never been compiled, let alone shipped. So the shipped client
+had never heard of this repository, which is the fact the respin needed — and
+note it is `v1.4.12` that the live build fetches, not `v1.4.5`. cpmdroid and
+z80cpmw are the same shape: both shipped builds predate their migration commits.
 
 **That window is now closed.** The moment a client ships against these URLs,
 overwriting a published asset means a client that already verified a SHA-256
 gets different bytes at the same URL, and the only signal it has is a
 `generation` it may not re-read until its next index fetch. After that, a
 correction to a published version is a NEW RomWBW version entry or nothing.
-Check `git tag --contains` on all three clients before assuming otherwise.
+Establish what shipped with the three steps above before assuming otherwise —
+not with `git tag --contains`, which is what got this wrong the first time.
 
 **`tools/publish_release.sh` cannot do a respin, and will not say so.** It skips
 any asset whose size matches what it would upload (section 4). A rebuilt ROM is
@@ -489,18 +561,64 @@ client. Respin by hand with `gh release upload --clobber`, naming each changed
 asset, and re-run section 7 against a clean directory afterwards.
 
 **The old `avwohl/ioscpm` tags `v1.4.5` and `v1.4.12` must stay live
-indefinitely.** Installed clients are hardwired to them: `v1.4.12` appears as a
-compile-time constant in all three GUI clients —
-`ioscpm/iOSCPM/Views/EmulatorViewModel.swift:161` (`releaseTag`),
-`cpmdroid/.../data/DiskCatalogRepository.kt:45` (`RELEASE_TAG`),
-`z80cpmw/z80cpmw/DiskCatalog.cpp:38` (`RELEASE_TAG`, a `std::wstring`, so it
-appears in built artifacts as UTF-16LE) — and older builds are hardwired to
-`v1.4.5`. Those tags are not this repository's, but publishing here does not
-retire them, and nothing about this migration makes them safe to remove. They stay
-until no installed build points at them, which in practice means indefinitely.
+indefinitely,** and as of 2026-09-06 neither is a legacy concern. Every shipped
+client fetches from one of them:
 
-**Do not rely on `tools/check-disk-pins.sh` to catch a mistake here.** It is
-byte-identical in all five repos (md5 `47b7437050018c7cb4f7687d09909dc6`),
+	ioscpm	App Store 1.5.1	build 61, `af0b9b2`	`v1.4.12`
+	cpmdroid	Play 1.25	versionCode 27	`v1.4.5`
+	z80cpmw	Store 1.0.23		`v1.4.5`
+
+Two installed clients are on `v1.4.5`, not one. cpmdroid is the one to get right
+by hand, because versionCode 27 was minted BEFORE the repin that moved it to
+`v1.4.12` — its own commit `90fe0c2` settles it: "27 was minted before the repin,
+so Play's 1.25 fetches `v1.4.5`." Do not reason from the newest commit that
+carries a version string; reason from the one that minted the number the store
+serves. Deleting either tag breaks installed software today.
+
+**The pins are gone from all three trees as ASSIGNMENTS, but grep still finds
+them as prose.** `releaseTag` in ioscpm's `EmulatorViewModel.swift`,
+`RELEASE_TAG` in cpmdroid's `DiskCatalogRepository.kt` and in z80cpmw's
+`DiskCatalog.cpp` were deleted by the v0 migration, and each was replaced by a
+comment above the new index constant that quotes what it replaced
+(`EmulatorViewModel.swift:386`, `DiskCatalogRepository.kt:94`,
+`DiskCatalog.cpp:54`). So `git grep v1.4.12` at HEAD is not empty — it is 14
+files in ioscpm, 4 in cpmdroid, 12 in z80cpmw. What it will not find is a live
+assignment, and that is the actual trap: `tools/check-disk-pins.sh`'s `pin_of`
+strips comment lines and so returns empty for all three ports, which reads as
+"nothing is pinned" rather than "the pin moved".
+
+To learn what pin a SHIPPED build carries, `HEAD` is the wrong place — but so is
+`git show <tag>:<file>`, because none of these shipped builds is tagged
+(cpmdroid's newest tag is `v1.24` with no `v1.25`; z80cpmw's is `v1.0.22-beta`
+while the Store serves 1.0.23). Read it out of the commit that minted the store's
+version number, or out of the artifact — in a z80cpmw package it is UTF-16LE,
+being a `std::wstring`. To learn whether the tags still MATTER, `HEAD` is exactly
+right, and the answer is bigger than installed binaries: all three current trees
+still fetch in-app help from `avwohl/ioscpm/releases/latest/download/`
+(`HelpView.swift:187-188`, `HelpWindow.cpp:24,26`, `HelpActivity.kt:334`), which
+resolves to `v1.4.12` today. Deleting it breaks help in builds made from HEAD,
+never mind the ones users have.
+
+Those tags are not this repository's, but publishing here does not retire them,
+and nothing about this migration makes them safe to remove. They stay until no
+installed build points at them, which in practice means indefinitely.
+
+**Do not rely on `tools/check-disk-pins.sh` to catch a mistake here,** and do
+not believe it is one script. It is in four of the five repos — romwbw_disks has
+never had it — and the four are NOT identical: romwbw_emu and z80cpmw are md5
+`47b7437050018c7cb4f7687d09909dc6` (10,556 bytes), ioscpm is
+`3b914238108cda57afd7a29d6d345027` (12,902 bytes) and cpmdroid is
+`f8ba1d5c2005e56a985d4da4b35fc964` (19,183 bytes); cpmemu, outside this family,
+carries the 10,556-byte one too.
+
+They were identical when they were added on 2026-09-03. They diverged because
+the v0 migration updated the checker in the two clients it touched first
+(`ffbe12c` in ioscpm, `41829cb`/`bb0ac74` in cpmdroid) and did not touch
+z80cpmw's or romwbw_emu's at all — so z80cpmw migrated its client on `17c72fa`
+and left its pin checker on the pre-migration script. Do not assume a fix to one
+copy reached the others; there is no mechanism that would carry it.
+
+What all four still share is that each
 hardcodes `CATALOG_REPO="avwohl/ioscpm"`, treats `hd1k_combo.img` as the single
 canary, and scans built artifacts for the regex `v1\.[0-9]+\.[0-9]+`. That regex
 matches neither `v0` nor `3.5.1`. It goes blind the moment a client migrates.

@@ -99,7 +99,9 @@ client's core has not been checked against.
 
 ### All three GUI clients
 
-**Replace the single pin.** Today each holds a constant with the same value:
+**Replace the single pin.** DONE on 2026-09-05 in all three clients; this is
+what was there and what to look for if you are reading an older tree. Each held
+a constant with the same value:
 
 | Client | File | Symbol |
 |---|---|---|
@@ -348,9 +350,11 @@ Older builds do not name a tag at all: they float on
 Latest load-bearing too — see [RELEASING.md](RELEASING.md) §6. Migrating
 clients does not free those tags; only the last user uninstalling does.
 
-`tools/check-disk-pins.sh`, byte-identical in all five repos (md5
-`47b7437050018c7cb4f7687d09909dc6`), stops answering its question the moment a
-client migrates: it hardcodes `CATALOG_REPO="avwohl/ioscpm"`, treats
+`tools/check-disk-pins.sh` — which was byte-identical in the four repos carrying
+it when this was written (md5 `47b7437050018c7cb4f7687d09909dc6`; romwbw_disks
+has never had it) and is no longer, ioscpm's and cpmdroid's having been updated
+by the migration itself while z80cpmw's and romwbw_emu's were not — stops
+answering its question the moment a client migrates: it hardcodes `CATALOG_REPO="avwohl/ioscpm"`, treats
 `hd1k_combo.img` as the single canary, and scans built artifacts for the regex
 `v1\.[0-9]+\.[0-9]+`, which matches neither `v0` nor `3.5.1`. It then fails in
 two directions at once. The artifact scan goes quiet: a scan that matches

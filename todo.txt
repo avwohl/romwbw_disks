@@ -15,13 +15,15 @@ src/, and all three GUI clients were migrated on 2026-09-05.  Its last question
 is answered under [ANY] below.
 
 - [WINDOWS + MAC + ANDROID] NONE OF THE CLIENT MIGRATION HAS BEEN COMPILED, and
-that is the largest open item anywhere in this family.  ioscpm builds 63-64,
-cpmdroid 1.26-1.27 and z80cpmw's unreleased entry were all written on a Linux
+that is the largest open item anywhere in this family.  ioscpm builds 63-65,
+cpmdroid 1.26-1.28 and z80cpmw's unreleased entry were all written on a Linux
 machine with no Xcode, no Android SDK or NDK and no MSVC.  What could be checked
 without them was, and each client's CHANGELOG says which tier each file reached:
-cpmdroid type-checked every Kotlin source and ran three JVM suites (20 + 14 + 3),
-z80cpmw compiled and ran tests/test_catalogv0.cpp (107 checks) and syntax-checked
-six more sources under mingw, ioscpm checked its project.pbxproj edits and its
+cpmdroid type-checked every Kotlin source and ran four JVM suites (52 tests),
+z80cpmw compiled and ran tests/test_catalogv0.cpp (130 checks) and syntax-checked
+six more sources under mingw, ioscpm ran the three non-Swift suites its
+Tests/run_tests.sh can run on Linux (fifteen skipped) and exercised its C++ ROM
+API over all four published ROMs, and checked its project.pbxproj edits and its
 ObjC bridge by reading.  What reached no compiler at all is ioscpm's Swift, and
 z80cpmw's MainWindow.cpp and SettingsDialogWx.cpp - which between them hold the
 F5 default-disk path, the Settings write-back and the release picker.  Each
@@ -63,21 +65,30 @@ geometry, a heap that grew on every OS boot, no periodic timer at all
 end of the wrong thing, six SYS subfunctions answering in the wrong register,
 all three SND setters reading the wrong register, and unhandled VDA/SND/RTC
 functions reporting SUCCESS with the caller's own registers.
-  Two things are deliberately NOT done and are recorded in romwbw_emu's todo:
-HB_BNKCALL, because the clean fix changes bank 0 of every published ROM and so
-forces a generation bump and a republish of both releases; and the remaining
-low-severity findings, which are catalogued in that audit and are contract
-tidying rather than defects a user meets.
+  HB_BNKCALL is no longer deferred: it was fixed on 2026-09-06, romwbw_emu
+e47c948, with d4f4a2a for the four ROM copies that commit missed.  0xFFF9 is now
+"jp HBX_LOC + HBX_BNKCALL_START" and the proxy does a real bank call.  The
+republish it was deferred to avoid is generation 2, published the same day for
+both releases and recorded under SETTLED DECISIONS below; romwbw_emu's own todo
+still opens by calling it deferred and is wrong about that.
+  What IS still not done is the remaining low-severity findings - contract
+tidying rather than defects a user meets - and nothing catalogues them.  Grep
+finds the 74 findings named nowhere in either repository except this item, so
+the forty-odd not yet fixed live only in a session transcript.
   What is still not done is the rest of hbios.asm.  These passes covered the
 boot path, the device inventory, every function the dispatcher implements, and
 the new 3.6.0 surface.  They did not read all 268KB.
 
-- [ANY] tools/publish_release.sh is undocumented, contradicts section 6 of
-docs/RELEASING.md, and CANNOT SAFELY PUBLISH A CORRECTION.  It appears in neither
-that document's procedure nor tools/README.md's script table, and at :177-178 it
-sets --prerelease from version.json's status - which section 6 rules out, because
-a client must read status from the index and never infer it from a GitHub flag.
-  The third fault is the dangerous one and was found on 2026-09-06 while
+- [ANY] tools/publish_release.sh CANNOT SAFELY PUBLISH A CORRECTION, and is
+missing from tools/README.md's script table.  docs/RELEASING.md does describe it:
+section 4 says it scripts the whole publish and section 5 says it cannot do a
+respin.  What that document has NOT caught up with is its own "Known open work",
+which still calls the script undocumented and still says the --prerelease it sets
+at :177-178 contradicts section 6 - which section 6 itself settled: the flag is
+kept deliberately as a label for a human, and the script reads it back at
+:237-259 and fails if it disagrees with the manifest.  The rule that stands is
+only the one for clients: status comes from the index, never from a GitHub badge.
+  The remaining fault is the dangerous one and was found on 2026-09-06 while
 publishing the HB_BNKCALL rebuild.  It decides an asset is already uploaded by
 comparing SIZE.  Every ROM is 512 KB before and after any change to bank 0, so on
 a respin it silently skips all four rebuilt ROMs while still uploading the
@@ -118,17 +129,28 @@ says, not repeated here.
   cf8d2f7, cpmdroid bb0ac74, z80cpmw 17c72fa.  A new RomWBW version now needs a
   release HERE and nowhere else, which was the point of this repository.  The
   bundled ROM stays as a first-launch fallback and is byte-identical to the
-  published emu_avw-v0-3.5.1.rom.  ioscpm's docs/ROM_ATTESTATION.md was rewritten
+  published emu_avw-v0-3.5.1.rom - a standing obligation, not a one-off: when
+  generation 2 moved those bytes all three bundles were refreshed to 4b11402a on
+  2026-09-06 (ioscpm 5834d92, cpmdroid 19b3563, z80cpmw cd1fb2b, which carries
+  two copies).  ioscpm's docs/ROM_ATTESTATION.md was rewritten
   to describe the download; filing it is a person's job and ioscpm's todo has it.
 
 - Generation 2 is published for both releases (2026-09-06), and the respin
   question RELEASING.md left open is now DECIDED there in section 5: overwrite
   the assets in place and bump generation, never invent a -r2 name, because all
-  three clients key saved state on the filename.  It was safe exactly once -
-  git tag --contains was empty on all three client HEADs, so no installed build
-  could see the change.  That window is closed; after a client ships, a
-  correction is a new RomWBW version entry or nothing.
-  Only the four ROMs changed (c7abc580->4b11402a, ee3adea5->03e64691,
+  three clients key saved state on the filename.  It was safe exactly once,
+  because no shipped client could see these URLs at all.  The evidence for that
+  is NOT git tag --contains, which was the first check tried and is worthless
+  here: these repositories release without tagging, and on 2026-09-06 the App
+  Store was serving ioscpm 1.5.1 for which no tag exists.  What settles it is
+  what the shipped source fetches - ioscpm's Store 1.5.1 is build 61 (af0b9b2,
+  on v1.4.12), cpmdroid's Play 1.25 is versionCode 27 (on v1.4.5) and z80cpmw's
+  Store 1.0.23 is on v1.4.5, and index-v0 first entered any client tree at
+  ioscpm ffbe12c, which has never been compiled.  RELEASING.md section 5 has the
+  three-step recipe and the traps in each step.  That window is closed; after a
+  client ships, a correction is a new RomWBW version entry or nothing.
+  What moved the bytes was the HB_BNKCALL fix (romwbw_emu e47c948) landing in
+  bank 0.  Only the four ROMs changed (c7abc580->4b11402a, ee3adea5->03e64691,
   2f4a6252->01d1ca6d, 70196de9->9b204cd7).  All 44 disk images are byte-identical
   across both catalogs and were not re-uploaded.
 
