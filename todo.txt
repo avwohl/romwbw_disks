@@ -52,9 +52,25 @@ the EXT group did - CIO/DIO/SYS aborted and RTC/VDA/SND returned success with
 stale registers), and BF_SNDNOTE's "quarter note" -> "eighth tone" change, which
 was cited as a semantic change and is a terminology CORRECTION: the note tables
 are byte-identical and 48 steps per octave really is eight per whole tone.
-  What is still not done is the rest of hbios.asm.  This pass covered the boot
-path, the device inventory, every function the dispatcher implements, and the
-new 3.6.0 surface.  It did not read all 268KB.
+  A SECOND pass then checked all 82 implemented functions against RomWBW's own
+handlers rather than against the previous release - which is where the bugs
+actually were, since five of the first six were "implemented but wrong".  It
+produced 74 findings and around 30 are now fixed across romwbw_emu commits
+68d02ac..aceaa84: a guest-visible console hang (BF_CIOIST returning $FF, which
+reads as a negative error, so HTALK.COM span forever), swapped memory-disk
+geometry, a heap that grew on every OS boot, no periodic timer at all
+(TIMER.COM frozen, VGMPLAY.COM hung), slice bounds checked against the wrong
+end of the wrong thing, six SYS subfunctions answering in the wrong register,
+all three SND setters reading the wrong register, and unhandled VDA/SND/RTC
+functions reporting SUCCESS with the caller's own registers.
+  Two things are deliberately NOT done and are recorded in romwbw_emu's todo:
+HB_BNKCALL, because the clean fix changes bank 0 of every published ROM and so
+forces a generation bump and a republish of both releases; and the remaining
+low-severity findings, which are catalogued in that audit and are contract
+tidying rather than defects a user meets.
+  What is still not done is the rest of hbios.asm.  These passes covered the
+boot path, the device inventory, every function the dispatcher implements, and
+the new 3.6.0 surface.  They did not read all 268KB.
 
 - [ANY] tools/publish_release.sh is undocumented and contradicts section 6 of
 docs/RELEASING.md.  It appears in neither that document's procedure nor
