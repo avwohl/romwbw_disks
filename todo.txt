@@ -72,13 +72,20 @@ tidying rather than defects a user meets.
 boot path, the device inventory, every function the dispatcher implements, and
 the new 3.6.0 surface.  They did not read all 268KB.
 
-- [ANY] tools/publish_release.sh is undocumented and contradicts section 6 of
-docs/RELEASING.md.  It appears in neither that document's procedure nor
-tools/README.md's script table, and at :177-178 it sets --prerelease from
-version.json's status - which section 6 rules out, because a client must read
-status from the index and never infer it from a GitHub flag.  Either wire it into
-RELEASING.md properly or delete it before someone runs it expecting section 4's
-behaviour.
+- [ANY] tools/publish_release.sh is undocumented, contradicts section 6 of
+docs/RELEASING.md, and CANNOT SAFELY PUBLISH A CORRECTION.  It appears in neither
+that document's procedure nor tools/README.md's script table, and at :177-178 it
+sets --prerelease from version.json's status - which section 6 rules out, because
+a client must read status from the index and never infer it from a GitHub flag.
+  The third fault is the dangerous one and was found on 2026-09-06 while
+publishing the HB_BNKCALL rebuild.  It decides an asset is already uploaded by
+comparing SIZE.  Every ROM is 512 KB before and after any change to bank 0, so on
+a respin it silently skips all four rebuilt ROMs while still uploading the
+catalog that hashes the new bytes - publishing a catalog whose every ROM entry
+fails verification in every client.  Nothing in the script reports the skip as
+anything but success.  That publish was therefore done by hand with --clobber.
+  Either fix it to compare sha256 and wire it into RELEASING.md properly, or
+delete it before someone runs it expecting section 4's behaviour.
 
 - [ANY] STANDING: do NOT delete the duplicated Z80 sources in romwbw_emu/src.
 docs/CLIENT_MIGRATION.md step 6 listed them as cleanup and listing them was
@@ -94,7 +101,7 @@ replacement for all of that first.
 independently.  tools/check_source_drift.sh compares them on every push, and
 they agree: three are byte-identical, emu_hbios.asm differs only by taking its
 version from the generated romwbw_ver.inc, and both trees build emu_avw.rom to
-the same c7abc580....
+the same 4b11402a....
   The other three cleanup items were done on 2026-09-05: romwbw_emu's
 disks/disks.xml and its archive/romwbw-v3.6.0 dev snapshot, and z80cpmw's
 packaging/scripts/verify-disk-assets.sh.  Each was verified not to break

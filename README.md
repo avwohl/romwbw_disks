@@ -114,7 +114,7 @@ hand-edited, hashes included.
 
 **The build is reproducible.** A clean rebuild produces all 48 artifacts
 byte-identical. More usefully, `emu_avw-v0-3.5.1.rom` hashes to
-`c7abc580b3285a33e439c0d6724a9d64dd3e93733a4fc2c1b80b0bfd91f9c580` — the same
+`4b11402a29fad22de304775b7c415eb6a74600df06bd57828b9931a7e9693258` — the same
 bytes as the `emu_avw.rom` bundled in ioscpm, cpmdroid, z80cpmw and romwbw_emu
 today. The rebuilt `w8.com` and `r8.com` are likewise byte-identical to the
 copies inside the currently shipped `hd1k_combo.img`. This repo reproduces what

@@ -600,7 +600,7 @@ CBIOS matches the ROM, so no `HBIOS/CBIOS Version Mismatch` warning; and
 
 The matching ROM comes from the same catalog's `roms[]`:
 `emu_avw-v0-3.5.1.rom`, `size` `524288`, `sha256`
-`c7abc580b3285a33e439c0d6724a9d64dd3e93733a4fc2c1b80b0bfd91f9c580` — which is
+`4b11402a29fad22de304775b7c415eb6a74600df06bd57828b9931a7e9693258` — which is
 byte-identical to the `emu_avw.rom` bundled in `ioscpm`, `cpmdroid`, `z80cpmw`
 and `romwbw_emu` today. Its `hcb.version` `"0x35"` and `hcb.update` `"0x10"`
 are the bytes `emu_validate_rom_hcb` will read at `0x105`/`0x106` after the

@@ -9,7 +9,7 @@ Two things get published, and they are published differently:
 
 | What | Tag | Mutable? | Size |
 |---|---|---|---|
-| ROMs, disk images, `catalog-v0-<ver>.json`, `disks-v0-<ver>.xml` | `v0-romwbw-<ver>` | **No.** Immutable once public. | 202 MB (3.5.1), 234 MB (3.6.0) |
+| ROMs, disk images, `catalog-v0-<ver>.json`, `disks-v0-<ver>.xml` | `v0-romwbw-<ver>` | **No.** Immutable once a client has shipped against it — see section 5. | 202 MB (3.5.1), 234 MB (3.6.0) |
 | `index-v0.json` | `catalog-v0` | Yes. Re-cut whenever the set of versions changes. | 2942 bytes |
 
 Section 4 explains why the split exists.
@@ -220,7 +220,7 @@ legacy XML files and the index, all 53 generated files match.
 Separately, `emu_avw-v0-3.5.1.rom` has
 
 ```
-sha256  c7abc580b3285a33e439c0d6724a9d64dd3e93733a4fc2c1b80b0bfd91f9c580
+sha256  4b11402a29fad22de304775b7c415eb6a74600df06bd57828b9931a7e9693258
 ```
 
 which is byte-identical to the `emu_avw.rom` bundled in all four clients today.
@@ -272,7 +272,7 @@ shasum -a 256 \
   romwbw_disks/build/v0-romwbw-3.5.1/emu_avw-v0-3.5.1.rom
 ```
 
-All six lines must read `c7abc580b3285a33e439c0d6724a9d64dd3e93733a4fc2c1b80b0bfd91f9c580`.
+All six lines must read `4b11402a29fad22de304775b7c415eb6a74600df06bd57828b9931a7e9693258`.
 
 Note that `docs/ROM_ATTESTATION.md` in ioscpm is an Apple App Store filing that
 names `emu_avw.rom` specifically and cites `github.com/avwohl/romwbw_emu` as the
@@ -447,13 +447,46 @@ line is a claim that somebody booted the release — so boot it first
 (`tools/boot_test.sh 3.7.0`), then add the line. Publishing a version no core
 will load is how you ship 234 MB nobody can use.
 
-What is **not** currently solved: there is no mechanism for a corrected respin of
-the *same* RomWBW version under the *same* interface version. The naming scheme
-has no room for one — assets are `<id>-v0-<ver>.<ext>` on `v0-romwbw-<ver>`, with
-the tag and the filenames both derived from those two numbers by
-`tools/common.sh:59` and `:62`. That has never been needed. If it ever is, it is a
-design decision about the naming scheme, not a build step, and it must be made
-before anything is uploaded.
+### Correcting a version that is already published
+
+There is no room in the naming scheme for a respin: assets are
+`<id>-v0-<ver>.<ext>` on `v0-romwbw-<ver>`, and `tools/common.sh:59` and `:62`
+derive both the tag and every filename from those two numbers alone. This
+document used to say that if a respin were ever needed it would be a design
+decision about the naming scheme, to be made before anything was uploaded. It
+was needed on 2026-09-06, and this is that decision.
+
+**Overwrite the assets in place, and bump `generation`. Do not invent a new
+name.** The `generation` counter already *is* the mechanism for content changing
+under a fixed filename — that is the whole reason it is content-derived rather
+than hand-set (section 3). Adding `-r2` to a tag or a filename would instead
+change what a filename *means*, and section 4 spells out what that costs: all
+three clients key saved state on the filename, so every user's downloaded
+library would be stranded under names nothing fetches any more.
+
+**What made it safe this once, and why it will not be next time.** Immutability
+protects installed clients, and on 2026-09-06 there were none: no client tag
+contained the migration commit (`git tag --contains` was empty on all three), and
+every shipped build — ioscpm `v1.4.12`, cpmdroid `v1.24`, z80cpmw `v1.0.22-beta`
+— fetches `avwohl/ioscpm/releases/download/v1.4.5/disks.xml` and has never heard
+of this repository. Download counts on the v0 assets were 2 to 9, which is this
+repository's own verification traffic. The rule was protecting nobody, so the
+respin cost nothing.
+
+**That window is now closed.** The moment a client ships against these URLs,
+overwriting a published asset means a client that already verified a SHA-256
+gets different bytes at the same URL, and the only signal it has is a
+`generation` it may not re-read until its next index fetch. After that, a
+correction to a published version is a NEW RomWBW version entry or nothing.
+Check `git tag --contains` on all three clients before assuming otherwise.
+
+**`tools/publish_release.sh` cannot do a respin, and will not say so.** It skips
+any asset whose size matches what it would upload (section 4). A rebuilt ROM is
+512 KB before and after, so it silently leaves the old bytes in place — while
+still uploading the new `catalog-v0-<ver>.json` that hashes the new ones. The
+result is a published catalog whose every ROM entry fails verification in every
+client. Respin by hand with `gh release upload --clobber`, naming each changed
+asset, and re-run section 7 against a clean directory afterwards.
 
 **The old `avwohl/ioscpm` tags `v1.4.5` and `v1.4.12` must stay live
 indefinitely.** Installed clients are hardwired to them: `v1.4.12` appears as a
@@ -653,7 +686,7 @@ Build:
       step above, and `build_all.sh` does not run it for you. A `SKIP` line
       means no emulator was found, which is not a pass.
 - [ ] 53 generated files, all byte-identical to the previous build (section 3).
-- [ ] `emu_avw-v0-3.5.1.rom` is still `c7abc580…` — if it is not, stop and find out why.
+- [ ] `emu_avw-v0-3.5.1.rom` is still `4b11402a…` — if it is not, stop and find out why.
 - [ ] `git status` is clean apart from `build/`; `versions/*/generation.json` and
       `catalog/v0/**` changes are intentional and reviewed.
 - [ ] `build/` is not committed.

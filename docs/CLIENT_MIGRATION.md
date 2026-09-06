@@ -209,7 +209,7 @@ client.
 - `DiskCatalog.cpp:29-30` states it reads no attributes; that stays fine.
 - `roms/` holds three checked-in 512 KB ROMs and nothing ever fetches one.
   `emu_avw.rom` and `emu_romwbw.rom` are byte-identical to each other (both
-  sha256 `c7abc580…`). If ROMs come from the catalog, this directory, the
+  sha256 `4b11402a…`). If ROMs come from the catalog, this directory, the
   vcxproj's two `PostBuildEvent` xcopies of `roms\emu_*.rom` (`:132`, `:179`),
   the three `<None Include>` entries (`:322`, `:325`, `:328`),
   `packaging/nsis/z80cpmw.nsi:115-120` and `build-msix.ps1` all shrink.
