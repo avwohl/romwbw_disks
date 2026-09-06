@@ -664,11 +664,12 @@ repositories (md5 `47b7437050018c7cb4f7687d09909dc6` — verified in `ioscpm`,
 > `tools/check-disk-pins.sh` to `tools/check-shipped-disks.sh`, because the old
 > name read as though the script pinned something when the script only reads —
 > and since the script names itself in its own header, the rename changed every
-> copy's hash again. Current: `z80cpmw`, `romwbw_emu` and `cpmemu` share
-> `a33600157ab1ef5406de6e3969518d18` (10,568 bytes), ioscpm is
-> `42f4641dbd2b07176ec9ddcca5ec533a` (12,914 bytes, diverged at `ffbe12c`) and
-> cpmdroid is `f5e78f614204cc6dea03a4d828b22c92` (19,195 bytes, at `41829cb`
-> and `bb0ac74`). Everything below still describes all five.
+> copy's hash again. Then, the same day, all five were made identical once more:
+> cpmdroid's copy had grown an `index-v0` port kind that checks a migrated port
+> properly, ioscpm and z80cpmw were moved into that row now that both have
+> migrated, and the result was copied to all five. Current, and the same
+> everywhere: `9a2295b9f082430f870a5bb87a2c55b2`. Everything below still
+> describes all five.
 
 It hardcodes
 `CATALOG_REPO="avwohl/ioscpm"`, treats `hd1k_combo.img` as the single canary,

@@ -603,22 +603,24 @@ Those tags are not this repository's, but publishing here does not retire them,
 and nothing about this migration makes them safe to remove. They stay until no
 installed build points at them, which in practice means indefinitely.
 
-**Do not rely on `tools/check-shipped-disks.sh` to catch a mistake here,** and do
-not believe it is one script. It is in four of the five repos — romwbw_disks has
-never had it — and the four are NOT identical: romwbw_emu and z80cpmw are md5
-`a33600157ab1ef5406de6e3969518d18` (10,568 bytes), ioscpm is
-`42f4641dbd2b07176ec9ddcca5ec533a` (12,914 bytes) and cpmdroid is
-`f5e78f614204cc6dea03a4d828b22c92` (19,195 bytes); cpmemu, outside this family,
-carries the 10,568-byte one too. (Those hashes are post-rename: the file was
-`tools/check-disk-pins.sh` until 2026-09-06, and renaming a script that names
-itself in its own header changes every copy's hash.)
+**`tools/check-shipped-disks.sh` is one script again, and was three for three
+days.** It is in five repos — cpmdroid, cpmemu, ioscpm, romwbw_emu and z80cpmw;
+romwbw_disks has never had it — and all five are md5
+`9a2295b9f082430f870a5bb87a2c55b2` as of 2026-09-06. (The file was
+`tools/check-disk-pins.sh` until that day; renaming a script that names itself
+in its own header changes every copy's hash.)
 
-They were identical when they were added on 2026-09-03. They diverged because
+They were identical when they were added on 2026-09-03, and diverged because
 the v0 migration updated the checker in the two clients it touched first
 (`ffbe12c` in ioscpm, `41829cb`/`bb0ac74` in cpmdroid) and did not touch
 z80cpmw's or romwbw_emu's at all — so z80cpmw migrated its client on `17c72fa`
-and left its pin checker on the pre-migration script. Do not assume a fix to one
-copy reached the others; there is no mechanism that would carry it.
+and left its checker on the pre-migration script. cpmdroid's copy went furthest,
+growing a whole `index-v0` port kind that checks a migrated port properly instead
+of reporting `NO PIN FOUND` at it, and its own header said so: "THIS COPY HAS
+DIVERGED and the other four need the same edit". Reconverged on 2026-09-06 by
+taking that copy as canonical, moving ioscpm and z80cpmw into the `index-v0` row
+now that both have migrated, and copying the result to all five. Do not assume a
+fix to one copy reaches the others; nothing carries it but a person.
 
 What all four still share is that each
 hardcodes `CATALOG_REPO="avwohl/ioscpm"`, treats `hd1k_combo.img` as the single
