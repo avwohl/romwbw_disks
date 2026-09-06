@@ -121,6 +121,17 @@ says, not repeated here.
   published emu_avw-v0-3.5.1.rom.  ioscpm's docs/ROM_ATTESTATION.md was rewritten
   to describe the download; filing it is a person's job and ioscpm's todo has it.
 
+- Generation 2 is published for both releases (2026-09-06), and the respin
+  question RELEASING.md left open is now DECIDED there in section 5: overwrite
+  the assets in place and bump generation, never invent a -r2 name, because all
+  three clients key saved state on the filename.  It was safe exactly once -
+  git tag --contains was empty on all three client HEADs, so no installed build
+  could see the change.  That window is closed; after a client ships, a
+  correction is a new RomWBW version entry or nothing.
+  Only the four ROMs changed (c7abc580->4b11402a, ee3adea5->03e64691,
+  2f4a6252->01d1ca6d, 70196de9->9b204cd7).  All 44 disk images are byte-identical
+  across both catalogs and were not re-uploaded.
+
 - The pre-v0 hd1k_combo is equivalent and is NOT refreshed: 19 of 20 published
   images are byte-identical across the two catalogs, and the combo's 2,342
   differing bytes are CP/M slack between the same 94 identical files.

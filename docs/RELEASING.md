@@ -641,11 +641,16 @@ curl -fsSL -o "$WORK/index-v0.json" "$IDX"
 python3 -c '
 import json, sys
 for e in json.load(open(sys.argv[1]))["romwbw_versions"]:
-    print(e["release_tag"], e["catalog_url"])
-' "$WORK/index-v0.json" | while read -r tag caturl; do
+    print(e["release_tag"], e["catalog_url"], e["disks_xml_url"])
+' "$WORK/index-v0.json" | while read -r tag caturl xmlurl; do
     cat_file="$WORK/$tag/$(basename "$caturl")"
     mkdir -p "$WORK/$tag"
     curl -fsSL -o "$cat_file" "$caturl"
+
+    # The legacy XML is advertised by the index, not listed in the catalog's
+    # roms[]/disks[], so the loop below will not fetch it - and the --index pass
+    # checks for it.  Fetch it here or that pass fails on a correct release.
+    curl -fsSL -o "$WORK/$tag/$(basename "$xmlurl")" "$xmlurl"
 
     python3 -c '
 import json, sys
