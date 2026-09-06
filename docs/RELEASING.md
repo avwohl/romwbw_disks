@@ -583,7 +583,7 @@ comment above the new index constant that quotes what it replaced
 (`EmulatorViewModel.swift:386`, `DiskCatalogRepository.kt:94`,
 `DiskCatalog.cpp:54`). So `git grep v1.4.12` at HEAD is not empty — it is 14
 files in ioscpm, 4 in cpmdroid, 12 in z80cpmw. What it will not find is a live
-assignment, and that is the actual trap: `tools/check-disk-pins.sh`'s `pin_of`
+assignment, and that is the actual trap: `tools/check-shipped-disks.sh`'s `pin_of`
 strips comment lines and so returns empty for all three ports, which reads as
 "nothing is pinned" rather than "the pin moved".
 
@@ -603,13 +603,15 @@ Those tags are not this repository's, but publishing here does not retire them,
 and nothing about this migration makes them safe to remove. They stay until no
 installed build points at them, which in practice means indefinitely.
 
-**Do not rely on `tools/check-disk-pins.sh` to catch a mistake here,** and do
+**Do not rely on `tools/check-shipped-disks.sh` to catch a mistake here,** and do
 not believe it is one script. It is in four of the five repos — romwbw_disks has
 never had it — and the four are NOT identical: romwbw_emu and z80cpmw are md5
-`47b7437050018c7cb4f7687d09909dc6` (10,556 bytes), ioscpm is
-`3b914238108cda57afd7a29d6d345027` (12,902 bytes) and cpmdroid is
-`f8ba1d5c2005e56a985d4da4b35fc964` (19,183 bytes); cpmemu, outside this family,
-carries the 10,556-byte one too.
+`a33600157ab1ef5406de6e3969518d18` (10,568 bytes), ioscpm is
+`42f4641dbd2b07176ec9ddcca5ec533a` (12,914 bytes) and cpmdroid is
+`f5e78f614204cc6dea03a4d828b22c92` (19,195 bytes); cpmemu, outside this family,
+carries the 10,568-byte one too. (Those hashes are post-rename: the file was
+`tools/check-disk-pins.sh` until 2026-09-06, and renaming a script that names
+itself in its own header changes every copy's hash.)
 
 They were identical when they were added on 2026-09-03. They diverged because
 the v0 migration updated the checker in the two clients it touched first

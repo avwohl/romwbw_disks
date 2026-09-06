@@ -39,7 +39,7 @@ encodings.
 > (`EmulatorViewModel.swift:386`, `DiskCatalogRepository.kt:94`,
 > `DiskCatalog.cpp:54`), so `git grep v1.4.12` at HEAD still returns plenty —
 > what it no longer returns is a live assignment, which is why
-> `check-disk-pins.sh`'s `pin_of` reads empty for all three ports. The shipped
+> `check-shipped-disks.sh`'s `pin_of` reads empty for all three ports. The shipped
 > builds still carry a pin and no longer agree on it: ioscpm 1.5.1 on `v1.4.12`,
 > cpmdroid Play 1.25 and z80cpmw Store 1.0.23 on `v1.4.5`. None of those builds
 > is tagged, so read the pin from the commit that minted the store's version
@@ -242,7 +242,7 @@ deliberately unpinned in CI.
 | iOSCPM | the `um80` mentions in `README.md` and `docs/DISK_W8FIX_RUNBOOK.md`; nothing in the build |
 | CPMDroid | the `um80` mention in `README.md`; the hot-patch in `app/src/main/cpp/emu_io_android.cpp` (the `W8_BROKEN` scan, section 6) |
 | Z80CPMW | the `um80` mention in `README.md`; `packaging/scripts/verify-disk-assets.sh` — **but see below** |
-| all three | `tools/check-disk-pins.sh` (section 12) |
+| all three | `tools/check-shipped-disks.sh` (section 12) |
 
 ### The one thing that must not simply disappear
 
@@ -654,16 +654,21 @@ this repository's naming (`emu_avw-v0-3.5.1.rom`) does exactly that. Somebody
 has to decide whether the filing gets amended or whether iOS keeps a bundled
 `emu_avw.rom` under the old name.
 
-**What replaces `tools/check-disk-pins.sh`?** It is byte-identical in all five
+**What replaces `tools/check-shipped-disks.sh`?** It is byte-identical in all five
 repositories (md5 `47b7437050018c7cb4f7687d09909dc6` — verified in `ioscpm`,
 `cpmdroid`, `z80cpmw`, `romwbw_emu` and `cpmemu`).
 
-> **Superseded 2026-09-06.** That measurement was correct when taken and is not
-> correct now. The v0 migration edited two of the five copies: ioscpm's is now
-> `3b914238108cda57afd7a29d6d345027` (12,902 bytes, changed by `ffbe12c`) and
-> cpmdroid's is `f8ba1d5c2005e56a985d4da4b35fc964` (19,183 bytes, by `41829cb`
-> and `bb0ac74`). `z80cpmw`, `romwbw_emu` and `cpmemu` still carry the
-> 10,556-byte original. Everything below still describes all five.
+> **Superseded 2026-09-06, twice.** That measurement was correct when taken and
+> is not correct now. First the v0 migration edited two of the five copies, so
+> they stopped being identical. Then the file was RENAMED, from
+> `tools/check-disk-pins.sh` to `tools/check-shipped-disks.sh`, because the old
+> name read as though the script pinned something when the script only reads —
+> and since the script names itself in its own header, the rename changed every
+> copy's hash again. Current: `z80cpmw`, `romwbw_emu` and `cpmemu` share
+> `a33600157ab1ef5406de6e3969518d18` (10,568 bytes), ioscpm is
+> `42f4641dbd2b07176ec9ddcca5ec533a` (12,914 bytes, diverged at `ffbe12c`) and
+> cpmdroid is `f5e78f614204cc6dea03a4d828b22c92` (19,195 bytes, at `41829cb`
+> and `bb0ac74`). Everything below still describes all five.
 
 It hardcodes
 `CATALOG_REPO="avwohl/ioscpm"`, treats `hd1k_combo.img` as the single canary,
