@@ -65,9 +65,15 @@ jobs:
       # job below is where those become real comparisons.
       - name: Fetch romwbw_emu to compare sources against
         run: |
+          # src only.  This used to also pull roms/ and disks/, because
+          # check_source_drift.sh compared romwbw_emu's tracked emu_avw.rom and
+          # cpmcp'd r8/w8 out of its tracked hd1k_combo.img.  romwbw_emu v1.40
+          # tracks neither - it fetches them from this repository's catalog -
+          # and the check now assembles both trees' sources instead, which
+          # needs nothing but src/.
           git clone --depth 1 --filter=blob:none --sparse \
             https://github.com/avwohl/romwbw_emu.git ../romwbw_emu
-          git -C ../romwbw_emu sparse-checkout set src roms
+          git -C ../romwbw_emu sparse-checkout set src
 
       - name: Z80 sources still agree with romwbw_emu
         run: sh tools/check_source_drift.sh
@@ -96,13 +102,15 @@ jobs:
       # combo present, this is the complete check - the three identical sources,
       # emu_hbios.asm's parameterisation, both trees' emu_avw.rom, and the
       # assembled r8.com/w8.com that only a real extraction can compare.
-      - name: Fetch romwbw_emu to compare sources and artifacts against
+      - name: Fetch romwbw_emu to compare sources and assembled output against
         run: |
+          # src only - see the quick job.  roms/ and disks/ hold no artifact in
+          # romwbw_emu any more.
           git clone --depth 1 --filter=blob:none --sparse \
             https://github.com/avwohl/romwbw_emu.git ../romwbw_emu
-          git -C ../romwbw_emu sparse-checkout set src roms disks
+          git -C ../romwbw_emu sparse-checkout set src
 
-      - name: Z80 sources and built artifacts still agree with romwbw_emu
+      - name: Z80 sources and assembled output still agree with romwbw_emu
         run: sh tools/check_source_drift.sh
 
       - name: The committed catalogs match what was just built
