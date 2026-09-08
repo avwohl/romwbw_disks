@@ -98,6 +98,40 @@ anything but success.  That publish was therefore done by hand with --clobber.
   Either fix it to compare sha256 and wire it into RELEASING.md properly, or
 delete it before someone runs it expecting section 4's behaviour.
 
+- [ANY] docs/CATALOG_SCHEMA.md section 4 describes a client that no longer
+exists, and three of its generation numbers are a release behind.  Measured
+against all three clients and the live index on 2026-09-08.
+  4.1 opens "iOS treats a change to this value as an instruction to delete
+files" and names checkCatalogVersionAndInvalidate, the UserDefaults key
+"catalogVersion", and deleteCatalogDisks(named:).  None of those exists in
+ioscpm any more.  Build 66 replaced the lot with recordCatalogGeneration, whose
+own doc comment reads "Record this RomWBW release's catalog generation.  Delete
+nothing."  The wipe was removed on a measurement rather than a preference: the
+only generation bump this catalog has ever had - aab3a4f, 1 -> 2 on both
+releases - moved two ROM hashes and ZERO of the twenty disk hashes, so acting on
+it would have deleted twenty images and re-downloaded twenty byte-identical
+copies because two ROMs were rebuilt.  cpmdroid parses generation and keeps its
+images; z80cpmw parses it in CatalogV0.cpp and deletes nothing on it.  So no
+measured client deletes on a generation bump, and 4.1's justification now rests
+on a behaviour none of them has.
+  The reasons for computing generation from content rather than by hand stand on
+their own and should stay - a client that has not been read is not a client that
+keeps files.  What needs rewriting is the client description: say what the
+counter is FOR, not what one client used to do with it.
+  Three stale numbers go with it.  4.2 says "both published versions are
+currently at generation: 1"; 4.3's "What this asks of a client" repeats "both
+published versions happen to be at generation 1"; and the disks.xml table says
+`version` is "Currently "1" for both versions".  The live index publishes
+generation 2 for 3.5.1 and for 3.6.0.
+  One sentence in that same paragraph is now false in the client's favour:
+"iOS stores it under one key "emulatorNvram"".  ioscpm namespaces it per
+release - CatalogMigration.versionedKey("emulatorNvram", romwbwVersion:) - and a
+simulator container after a 3.6.0 boot holds emulatorNvram.v0.3.5.1 and
+emulatorNvram.v0.3.6.0 side by side, next to selectedDisks.v0.3.6.0 and
+catalogGeneration.v0.3.6.0.  The advice was taken; the sentence should say so.
+  Raised from ioscpm, where this had been sitting in KNOWN_PROBLEMS.md as "that
+section is in another repository and needs a human's edit".
+
 - [ANY] STANDING: do NOT delete the duplicated Z80 sources in romwbw_emu/src.
 docs/CLIENT_MIGRATION.md step 6 listed them as cleanup and listing them was
 wrong.  r8.asm, w8.asm, emu_hbios.asm and emu_rom.asm have seven live consumers
