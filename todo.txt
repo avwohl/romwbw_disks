@@ -79,6 +79,29 @@ the forty-odd not yet fixed live only in a session transcript.
 boot path, the device inventory, every function the dispatcher implements, and
 the new 3.6.0 surface.  They did not read all 268KB.
 
+- [ANY] `gh release upload --clobber` CAN REPORT SUCCESS AND LEAVE THE OLD BYTES.
+Found on 2026-09-10 while publishing the rewritten help topics, and it is the
+same class of fault as the item below rather than a coincidence: an uploader
+that decides by anything except the content.
+  Two ways it went wrong in one command.  `gh release upload catalog-v0
+catalog/v0/index.json --clobber` uploads an asset named for the LOCAL file, so it
+created a second asset `index.json` beside the real `index-v0.json` and left the
+published entry point untouched.  Then `gh release upload catalog-v0
+"catalog/v0/index.json#index-v0.json" --clobber` printed nothing, moved the
+asset's `updated_at`, and STILL served the old document - confirmed by reading
+the stored object back through `gh api repos/.../releases/assets/<id>` with
+`Accept: application/octet-stream`, not by fetching a URL, so no CDN cache can
+explain it.  Both old and new index are 5421 bytes, which is exactly the
+condition that hides this.
+  What worked: `gh release delete-asset`, then `gh release upload` of a file
+whose NAME on disk is already the published asset name.  Copy it to a scratch
+directory as `index-v0.json` and upload that.
+  So the rule for this repository: never trust an upload that was not read back.
+Fetch the stored object by asset id and compare the field you just changed - for
+the index, a size and a sha256 in the help block; for a ROM, the sha256 the
+catalog claims.  A published index that hashes bytes nobody serves is invisible
+until a user opens the app.
+
 - [ANY] tools/publish_release.sh CANNOT SAFELY PUBLISH A CORRECTION, and is
 missing from tools/README.md's script table.  docs/RELEASING.md does describe it:
 section 4 says it scripts the whole publish and section 5 says it cannot do a
