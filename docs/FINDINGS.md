@@ -658,18 +658,30 @@ has to decide whether the filing gets amended or whether iOS keeps a bundled
 repositories (md5 `47b7437050018c7cb4f7687d09909dc6` — verified in `ioscpm`,
 `cpmdroid`, `z80cpmw`, `romwbw_emu` and `cpmemu`).
 
-> **Superseded 2026-09-06, twice.** That measurement was correct when taken and
-> is not correct now. First the v0 migration edited two of the five copies, so
-> they stopped being identical. Then the file was RENAMED, from
-> `tools/check-disk-pins.sh` to `tools/check-shipped-disks.sh`, because the old
-> name read as though the script pinned something when the script only reads —
-> and since the script names itself in its own header, the rename changed every
-> copy's hash again. Then, the same day, all five were made identical once more:
-> cpmdroid's copy had grown an `index-v0` port kind that checks a migrated port
-> properly, ioscpm and z80cpmw were moved into that row now that both have
-> migrated, and the result was copied to all five. Current, and the same
-> everywhere: `9a2295b9f082430f870a5bb87a2c55b2`. Everything below still
-> describes all five.
+> **Superseded 2026-09-06, twice, and again on 2026-09-10.** That measurement
+> was correct when taken and is not correct now. First the v0 migration edited
+> two of the five copies, so they stopped being identical. Then the file was
+> RENAMED, from `tools/check-disk-pins.sh` to `tools/check-shipped-disks.sh`,
+> because the old name read as though the script pinned something when the
+> script only reads — and since the script names itself in its own header, the
+> rename changed every copy's hash again. Then, the same day, all five were
+> made identical once more: cpmdroid's copy had grown an `index-v0` port kind
+> that checks a migrated port properly, ioscpm and z80cpmw were moved into that
+> row now that both have migrated, and the result was copied to all five. That
+> state was `9a2295b9f082430f870a5bb87a2c55b2` and it did not last: no copy
+> carries that hash today. On 2026-09-10 cpmemu DELETED its copy — `294ee01`, "this
+> repository has no disks to check", because cpmemu is not in the script's ports
+> table, ships no disk image and ran it from no workflow. Four repositories
+> carry it now and no two of them agree. Measured with `md5 -q` on 2026-09-10,
+> each worktree equal to its own `git show HEAD:` and each tree clean, so this
+> is committed divergence rather than uncommitted edits: ioscpm
+> `a955cb2444ab6b3e3aa3feb48c180cbd` (23,851 bytes, 499 lines), cpmdroid
+> `9a703420528a4e7f1bfbf8c93f451180` (23,143, 487), z80cpmw
+> `7e6a2c902ae4010615530582b1a67240` (22,485, 485), romwbw_emu
+> `29fd68a758d4052d91dc226d64437197` (25,822, 545). The copy cpmemu deleted was
+> `2dd4a7f63226c2723f65b5c95e560175`, 21,319 bytes, 467 lines — the shortest of
+> the five, and the only one none of the later edits had reached. Everything
+> below describes the four that remain.
 
 It hardcodes
 `CATALOG_REPO="avwohl/ioscpm"`, treats `hd1k_combo.img` as the single canary,

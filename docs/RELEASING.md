@@ -603,12 +603,20 @@ Those tags are not this repository's, but publishing here does not retire them,
 and nothing about this migration makes them safe to remove. They stay until no
 installed build points at them, which in practice means indefinitely.
 
-**`tools/check-shipped-disks.sh` is one script again, and was three for three
-days.** It is in five repos — cpmdroid, cpmemu, ioscpm, romwbw_emu and z80cpmw;
-romwbw_disks has never had it — and all five are md5
-`9a2295b9f082430f870a5bb87a2c55b2` as of 2026-09-06. (The file was
-`tools/check-disk-pins.sh` until that day; renaming a script that names itself
-in its own header changes every copy's hash.)
+**`tools/check-shipped-disks.sh` is four different scripts.** It was added to
+five repos — cpmdroid, cpmemu, ioscpm, romwbw_emu and z80cpmw; romwbw_disks has
+never had it — and on 2026-09-10 cpmemu deleted its copy (`294ee01`, "this
+repository has no disks to check"): cpmemu is not in the script's ports table,
+ships no disk image, and ran it from no workflow. Four carry it now, and no two
+of those four agree. Measured with `md5 -q` on 2026-09-10, each worktree equal
+to its own `git show HEAD:` and each tree clean: ioscpm
+`a955cb2444ab6b3e3aa3feb48c180cbd` (23,851 bytes), cpmdroid
+`9a703420528a4e7f1bfbf8c93f451180` (23,143), z80cpmw
+`7e6a2c902ae4010615530582b1a67240` (22,485), romwbw_emu
+`29fd68a758d4052d91dc226d64437197` (25,822). The hash this section used to
+quote for all five, `9a2295b9f082430f870a5bb87a2c55b2`, matches nothing today.
+(The file was `tools/check-disk-pins.sh` until 2026-09-06; renaming a script
+that names itself in its own header changes every copy's hash.)
 
 They were identical when they were added on 2026-09-03, and diverged because
 the v0 migration updated the checker in the two clients it touched first

@@ -350,7 +350,7 @@ Older builds do not name a tag at all: they float on
 Latest load-bearing too — see [RELEASING.md](RELEASING.md) §6. Migrating
 clients does not free those tags; only the last user uninstalling does.
 
-`tools/check-shipped-disks.sh` — which was byte-identical in the four repos carrying
+`tools/check-shipped-disks.sh` — which was byte-identical in the five repos carrying
 it when this was written (md5 `47b7437050018c7cb4f7687d09909dc6`, under its
 then-name `tools/check-disk-pins.sh`; romwbw_disks has never had it) and is no longer, ioscpm's and cpmdroid's having been updated
 by the migration itself while z80cpmw's and romwbw_emu's were not — stops
