@@ -53,6 +53,25 @@ DL = "https://github.com/%s/releases/download" % REPO
 # one subsystem that had no reason to be special.
 HELP_TAG = "help-%s" % IFACE
 
+# THE ENTRY POINT EVERY CLIENT COMPILES IN, and the only string any of them has.
+#
+# `releases/latest/download/` and not `releases/download/catalog-v0/`, because a
+# client that names the TAG pins the tag: moving the index, renaming its release
+# or reorganising this repository would need a new build of the Windows, Android,
+# iOS and Linux clients, all at once, which is the exact coupling this repository
+# exists to remove.  GitHub resolves `latest` to whichever release carries the
+# flag, so the entry point is ours to move and nobody has to ship anything.
+#
+# THE INVARIANT THAT BUYS: THE RELEASE MARKED LATEST MUST CARRY index-<iface>.json.
+# It is one flag on the whole repository and `gh release create` takes it by
+# default, so a per-version release published without --latest=false silently
+# repoints every client in the world at a release that has no index on it.  That
+# is not hypothetical - it happened on 2026-09-10 when the help-v0 release was
+# cut, and `latest/download/index-v0.json` answered 404 until the flag was put
+# back.  publish_release.sh passes --latest=false on every other release and
+# check_latest.py fails the repository if the flag ever lands anywhere else.
+INDEX_LATEST_URL = "https://github.com/%s/releases/latest/download/index-%s.json" % (REPO, IFACE)
+
 
 def sha256(path):
     h = hashlib.sha256()
@@ -311,6 +330,47 @@ def write_legacy_xml(cat, path):
         f.write(xml)
 
 
+def build_help():
+    """The `help` block: the in-app help topics, shaped like every other asset.
+
+    HELP IS A CATALOG ENTRY, not a pointer at a second index.  It used to be
+    {"index_url": ..., "base_url": ...} naming a separate help_index.json, and
+    that was a second way of doing what disks[] and roms[] already do: a list of
+    files with an id, a filename, a size and a sha256 under one base_url.  The
+    separate document meant one more fetch, one more parse, one more thing to
+    keep in step - and help was the only content this repository published that
+    nothing verified.  Now it is checked on arrival like a ROM or a disk.
+
+    It lives in the INDEX and not in a per-version catalog, and that is
+    deliberate: the topics are about CP/M and the applications, not about RomWBW
+    3.5.1 versus 3.6.0.  Putting them in a per-version catalog would copy them
+    into every release and make fixing a typo mean re-cutting a 200 MB tag.  The
+    index is the small mutable document; re-cutting it is what publishing is.
+
+    Metadata is authored in help/topics.json; the sizes and hashes are measured
+    here, so they cannot be authored wrong.
+    """
+    src = json.load(open(os.path.join(ROOT, "help", "topics.json")))
+    topics = []
+    for t in src["topics"]:
+        path = os.path.join(ROOT, "help", t["filename"])
+        if not os.path.exists(path):
+            sys.exit("gen_catalog: help/%s is listed in help/topics.json and is not "
+                     "in the checkout." % t["filename"])
+        topics.append({
+            "id": t["id"],
+            "filename": t["filename"],
+            "name": t["name"],
+            "description": t["description"],
+            "size": os.path.getsize(path),
+            "sha256": sha256(path),
+        })
+    return {
+        "base_url": "%s/%s/" % (DL, HELP_TAG),
+        "topics": topics,
+    }
+
+
 def build_index(versions):
     entries = []
     for ver in versions:
@@ -351,17 +411,10 @@ def build_index(versions):
         # This document is the one thing that moves.  Its URL is stable and its
         # content changes when a RomWBW version is added or promoted, so a
         # client never needs a new build to see a new version.
-        "index_url": "%s/%s/index-%s.json" % (DL, INDEX_TAG, IFACE),
-        # Where the in-app help lives, so that no client compiles in a help URL.
-        # Optional by the compatibility rules - a client that predates this block
-        # ignores it and keeps whatever it was built with, and a client that
-        # knows it but finds it missing falls back to its bundled topics.
-        # base_url ends in "/" and is concatenated with a filename, the same
-        # contract as a version catalog's base_url.
-        "help": {
-            "index_url": "%s/%s/help_index.json" % (DL, HELP_TAG),
-            "base_url": "%s/%s/" % (DL, HELP_TAG),
-        },
+        "index_url": INDEX_LATEST_URL,
+        # The in-app help, as catalog data rather than as a pointer at another
+        # document.  See build_help().
+        "help": build_help(),
         "romwbw_versions": entries,
     }
     outdir = os.path.join(BUILD, INDEX_TAG)

@@ -1,46 +1,45 @@
 {
-  "version": 1,
-  "base_url": "https://github.com/avwohl/romwbw_disks/releases/download/help-v0/",
+  "comment": "Source metadata for the in-app help topics. tools/gen_catalog.py reads this, adds each file size and sha256, and writes the result into index-v0.json as the \"help\" block. Not published as an asset: the index IS the published form.",
   "topics": [
     {
       "id": "quick_start",
-      "title": "Quick Start Guide",
+      "name": "Quick Start Guide",
       "description": "Getting started with the emulator",
       "filename": "help_quick_start.md"
     },
     {
       "id": "cpm22",
-      "title": "CP/M 2.2 User Guide",
+      "name": "CP/M 2.2 User Guide",
       "description": "Complete guide to CP/M 2.2 operating system",
       "filename": "help_cpm22.md"
     },
     {
       "id": "zsdos",
-      "title": "ZSDOS User Guide",
+      "name": "ZSDOS User Guide",
       "description": "Z-System DOS with date/time stamping",
       "filename": "help_zsdos.md"
     },
     {
       "id": "nzcom",
-      "title": "NZCOM User Guide",
+      "name": "NZCOM User Guide",
       "description": "Z-System for CP/M 2.2 environments",
       "filename": "help_nzcom.md"
     },
     {
       "id": "zpm3",
-      "title": "ZPM3 User Guide",
+      "name": "ZPM3 User Guide",
       "description": "Z-System Plus/M3 enhanced CP/M 3",
       "filename": "help_zpm3.md"
     },
     {
       "id": "qpm",
-      "title": "QPM User Guide",
+      "name": "QPM User Guide",
       "description": "QP/M operating system",
       "filename": "help_qpm.md"
     },
     {
       "id": "disk_transfer",
-      "title": "File Transfer (R8/W8)",
+      "name": "File Transfer (R8/W8)",
       "description": "Transfer files between host and CP/M",
       "filename": "help_file_transfer.md"
     }

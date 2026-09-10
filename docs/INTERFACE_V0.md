@@ -157,6 +157,19 @@ Bump when an existing client would misbehave rather than merely miss out:
 
 Adding an optional field, a RomWBW version, a ROM, or a disk is **not** a bump.
 
-A v1 lives alongside v0: new release tags, a new index URL, and the v0 tags
-untouched. GitHub release asset URLs cannot be redirected, so every tag this
-repo publishes has to stay live for as long as any client points at it.
+A v1 lives alongside v0 **on the release marked Latest**: `index-v1.json` beside
+`index-v0.json`, and the v0 tags untouched. v0 clients keep reading v0, v1
+clients read v1, and neither is rebuilt for the other's sake.
+
+This paragraph used to say "new release tags, **a new index URL**", and that was
+the plan's undoing: a new index URL is unreachable from a client with the old one
+compiled in, so the migration it described silently required releasing Windows,
+Android, iOS and Linux at once - the coupling this whole interface exists to
+remove. Every client now compiles in
+`releases/latest/download/index-v0.json`, which names no tag, so where the index
+lives is this repository's to change. See CATALOG_SCHEMA.md §6.2 for the
+invariant that buys and the one flag that breaks it.
+
+GitHub release asset URLs cannot be redirected, so every tag this repo publishes
+has to stay live for as long as any client points at it - and every client built
+before 2026-09-10 points at `catalog-v0` by name, whatever is done from here.

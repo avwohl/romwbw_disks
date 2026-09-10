@@ -67,34 +67,60 @@ See §5.
 | `schema_version` | integer | Currently `1`. Bumped only if the *shape* of this document changes incompatibly. Independent of `interface`. |
 | `interface` | string | The interface version this index describes. Currently `"v0"`. |
 | `repo` | string | `"https://github.com/avwohl/romwbw_disks"`. Where the sources and this document come from. |
-| `index_url` | string | The canonical URL of this document, self-referentially. A client that has a copy from somewhere else can tell where the live one lives. |
+| `index_url` | string | The canonical URL of this document, self-referentially, and the URL every client compiles in. It goes through `releases/latest/download/` and names **no release tag** - see §6.2. |
 | `help` | object, optional | Where the in-app help lives. See §2.2. Optional: a client that predates it ignores it, and a client that knows it must cope with its absence. |
 | `romwbw_versions` | array of object | One entry per published RomWBW version, in the order `tools/gen_catalog.py` walked `versions/` (sorted by directory name). |
 
 ### 2.2 The `help` block
 
+The in-app help topics. Optional.
+
 | Field | Type | Meaning |
 |---|---|---|
-| `index_url` | string | Absolute URL of `help_index.json`, the list of help topics. |
 | `base_url` | string | Absolute URL prefix a topic's `filename` is appended to. **Ends in `/`** - concatenate, do not insert a separator, the same contract as a version catalog's `base_url`. |
+| `topics` | array of object | The topics, in the order they should be listed. |
 
-This block exists so that **no client compiles in a help URL**. The help
-assets are the eight files of the mutable `help-v0` tag today, but a client
-learns that from here rather than from a constant, so the tag can be renamed,
-re-cut or moved to another host with no release of the Windows, Android, iOS
-or Linux client. That is the same property `catalog_url` gives a RomWBW
-release, applied to the one subsystem that had been left out of it: until
-2026-09-10 every client fetched help from
-`avwohl/ioscpm/releases/latest/download/`, which kept that repository's Latest
-release load-bearing for every port long after the disk images had moved here.
+A `topics[]` entry is shaped like a `disks[]` entry, deliberately:
 
-It also means a fork inherits it: a client pointed at another index reads that
-index's `help` block, so a test catalog serves its own help without a patched
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string | Stable identifier, e.g. `"quick_start"`. **Key on this, never on position.** |
+| `filename` | string | Appended to `base_url`. |
+| `name` | string | Display name for a menu. Do not parse it. |
+| `description` | string | One line, for a subtitle. |
+| `size` | integer | Bytes. Check a download against it. |
+| `sha256` | string | 64 lowercase hex characters, of the file at `base_url + filename`. |
+
+**Help is a catalog entry, not a pointer at a second index.** The first version of
+this block was `{"index_url": …, "base_url": …}` naming a separate
+`help_index.json`, and that was a second way of expressing what `disks[]` and
+`roms[]` already express: a list of files with an id, a filename, a size and a
+hash under one base. It also meant one more document to fetch, one more to parse
+and one more to keep in step - and help was the only content this repository
+published that nothing verified, because the document it came from carried no
+hashes. It is checked on arrival now, like a ROM or a disk image.
+
+**It is in the index and not in a per-version catalog**, which is the other place
+it could have gone. The topics are about CP/M and about the applications, not
+about RomWBW 3.5.1 versus 3.6.0; a per-version catalog would copy them into every
+release and make fixing a typo mean re-cutting a 200 MB tag. The index is the
+small mutable document, and re-cutting it is what publishing is.
+
+**No client compiles in a help URL.** Until 2026-09-10 every one of them fetched
+help from `avwohl/ioscpm/releases/latest/download/`, which kept that repository's
+Latest release load-bearing for every port long after the disk images had moved
+here. A fork inherits the indirection too: a client pointed at another index
+reads that index's topics, so a test catalog serves its own help with no patched
 client.
 
 **A client must cope with the block being absent**, because an older published
-index has no `help` key at all. Falling back to the topics compiled into the
-client is the expected behaviour; treating it as an error is not.
+index has no `help` key at all. Falling back to topics compiled into the client
+is the expected behaviour; treating it as an error is not. Both parts or
+neither - a `base_url` with no `topics` is an empty list, and `topics` with no
+`base_url` cannot be fetched.
+
+Metadata is authored in `help/topics.json`; `tools/gen_catalog.py` measures each
+size and hash, so they cannot be authored wrong.
 
 ### 2.3 A `romwbw_versions[]` entry
 
@@ -491,10 +517,10 @@ stumbled into; [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md) covers it.
 
 ## 6. Compatibility rules
 
+### 6.1 What a client MUST tolerate
+
 Interface v0 promises these two documents keep their shape. Everything below
 follows from that.
-
-### 6.1 What a client MUST tolerate
 
 **Unknown fields, everywhere.** A client must ignore fields it does not know, at
 every level: top level, `romwbw_versions[]`, `hbios`, `roms[]`, `hcb`,
@@ -562,6 +588,41 @@ removing a ROM or a disk, editing a name or description, editing `notes`.
 A v1 would live alongside v0 — new release tags, a new index URL, v0 tags
 untouched. GitHub release asset URLs cannot be redirected, so every tag this
 repo publishes has to stay live for as long as any client points at it.
+
+### 6.3 The entry point, and the one flag that breaks it
+
+Every client compiles in exactly one URL and it is
+
+    https://github.com/avwohl/romwbw_disks/releases/latest/download/index-v0.json
+
+`releases/latest/download/` and **no release tag**. A client that spelled out the
+tag would pin it: this repository could add a RomWBW version freely, since that
+goes inside the index, but could never rename that release, move the index or
+publish a v1 anywhere a shipped client would look - which made every
+reorganisation "and release Windows, Android, iOS and Linux, all at once". That
+is the coupling this repository exists to remove, and it survived in the entry
+point until 2026-09-10 because the entry point is the one string that cannot
+itself be read out of a document.
+
+**So the release marked Latest MUST carry `index-v0.json`.** "Latest" is one flag
+on the whole repository and `gh release create` claims it by default, so any
+release published without `--latest=false` silently repoints every client at a
+release with no index on it. That is not hypothetical: cutting the `help-v0`
+release did exactly that on 2026-09-10 and the URL above answered 404 until the
+flag was put back. `tools/publish_release.sh` passes `--latest=false` on every
+release but the index one, and `tools/check_latest.py` fetches the URL above and
+fails if it is not the index.
+
+**A v1 ships alongside v0 on that same release.** `index-v1.json` beside
+`index-v0.json`: v0 clients keep reading v0, v1 clients read v1, and neither has
+to be told anything or rebuilt. The old plan - "new release tags, a new index
+URL" - could not work, because a new index URL is unreachable from a client that
+has the old one compiled in.
+
+**Already-shipped clients cannot be rescued by any of this.** Anything built
+before 2026-09-10 asks for `catalog-v0/index-v0.json` and always will, and a
+GitHub release asset URL cannot be redirected, so that tag has to stay live for
+as long as those builds are in use. This buys the next migration, not the last.
 
 ## 7. Worked example: getting `hd1k_combo-v0-3.5.1.img`
 

@@ -213,6 +213,20 @@ Retiring those tags would break every installed client at once.
   renamed or moved to another host with no client release on any platform -
   which is the property the whole catalog exists to provide and the one place it
   had been left out of.
+  THE ENTRY POINT NO LONGER NAMES A TAG EITHER, which is the bigger half.  Every
+  client compiled in releases/download/catalog-v0/index-v0.json, so this
+  repository could add a RomWBW version freely - that goes inside the index - but
+  could never rename that release, move the index, or publish a v1 anywhere a
+  shipped client would look.  INTERFACE_V0.md's own migration plan said "a v1
+  lives alongside v0: new release tags, A NEW INDEX URL", which is unreachable
+  from a constant naming the old one, so the plan silently meant "release
+  Windows, Android, iOS and Linux at once".  It is
+  releases/latest/download/index-v0.json now; a v1 ships as index-v1.json beside
+  it on the same Latest release and nobody rebuilds anything.
+  THE COST IS ONE FLAG: gh release create takes Latest by default, so any release
+  cut without --latest=false repoints every client at a release with no index.
+  That happened here on 2026-09-10 cutting help-v0.  tools/check_latest.py fetches
+  the URL and fails the repository if it is not the index; run it in CI.
   z80cpmw reads the block as of its 1.0.32.  IOSCPM AND CPMDROID STILL FETCH
   HELP FROM avwohl/ioscpm/releases/latest, so that tag is still load-bearing for
   them; each of those repositories owns its own change and this line is only the
