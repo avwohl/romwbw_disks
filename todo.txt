@@ -203,7 +203,23 @@ says, not repeated here.
 
 - The ioscpm release tags stay live forever regardless of the migration.
 Every build already in users' hands is hardwired to
-releases/download/v1.4.12/, GitHub release asset URLs cannot be redirected, and
-in-app help on both ioscpm and z80cpmw still fetches help_index.json from
-avwohl/ioscpm/releases/latest.  Migrating the disk catalog frees nothing there;
-retiring those tags would break installed clients and in-app help at once.
+releases/download/v1.4.12/, and GitHub release asset URLs cannot be redirected.
+Retiring those tags would break every installed client at once.
+
+  THE HELP HALF OF THIS IS NOW PARTLY DONE.  The help topics live here, as the
+  eight assets of the mutable help-v0 tag, and index-v0.json carries a `help`
+  block naming index_url and base_url (docs/CATALOG_SCHEMA.md section 2.2).  No
+  client compiles in that tag or any URL under it, so the help can be re-cut,
+  renamed or moved to another host with no client release on any platform -
+  which is the property the whole catalog exists to provide and the one place it
+  had been left out of.
+  z80cpmw reads the block as of its 1.0.32.  IOSCPM AND CPMDROID STILL FETCH
+  HELP FROM avwohl/ioscpm/releases/latest, so that tag is still load-bearing for
+  them; each of those repositories owns its own change and this line is only the
+  record of what this repository now offers.  The assets published here are
+  byte-identical to what ioscpm's Latest was serving on 2026-09-10 except
+  help_index.json, whose base_url names this tag - so a port can switch over
+  without any content moving under it.
+  ioscpm's release_assets/help_*.md is now a SECOND COPY of these files and the
+  two will drift.  Deciding which is the source - most likely this one, with
+  ioscpm's copy becoming its offline fallback only - is what is left.

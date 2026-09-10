@@ -34,7 +34,7 @@ entries this build can actually run. Every released client today keeps the one
 entry whose `hbios.ver_byte` / `hbios.upd_byte` match the single release its
 bundled emulator core was built for. A client rebuilt on `romwbw_emu` v1.39 or
 later keeps every entry its core says it can run, and offers the list — see
-§2.3.
+§2.4.
 
 **Step 3 — fetch that entry's `catalog_url`.** It is an absolute URL already;
 do not build it. For 3.5.1:
@@ -68,9 +68,35 @@ See §5.
 | `interface` | string | The interface version this index describes. Currently `"v0"`. |
 | `repo` | string | `"https://github.com/avwohl/romwbw_disks"`. Where the sources and this document come from. |
 | `index_url` | string | The canonical URL of this document, self-referentially. A client that has a copy from somewhere else can tell where the live one lives. |
+| `help` | object, optional | Where the in-app help lives. See §2.2. Optional: a client that predates it ignores it, and a client that knows it must cope with its absence. |
 | `romwbw_versions` | array of object | One entry per published RomWBW version, in the order `tools/gen_catalog.py` walked `versions/` (sorted by directory name). |
 
-### 2.2 A `romwbw_versions[]` entry
+### 2.2 The `help` block
+
+| Field | Type | Meaning |
+|---|---|---|
+| `index_url` | string | Absolute URL of `help_index.json`, the list of help topics. |
+| `base_url` | string | Absolute URL prefix a topic's `filename` is appended to. **Ends in `/`** - concatenate, do not insert a separator, the same contract as a version catalog's `base_url`. |
+
+This block exists so that **no client compiles in a help URL**. The help
+assets are the eight files of the mutable `help-v0` tag today, but a client
+learns that from here rather than from a constant, so the tag can be renamed,
+re-cut or moved to another host with no release of the Windows, Android, iOS
+or Linux client. That is the same property `catalog_url` gives a RomWBW
+release, applied to the one subsystem that had been left out of it: until
+2026-09-10 every client fetched help from
+`avwohl/ioscpm/releases/latest/download/`, which kept that repository's Latest
+release load-bearing for every port long after the disk images had moved here.
+
+It also means a fork inherits it: a client pointed at another index reads that
+index's `help` block, so a test catalog serves its own help without a patched
+client.
+
+**A client must cope with the block being absent**, because an older published
+index has no `help` key at all. Falling back to the topics compiled into the
+client is the expected behaviour; treating it as an error is not.
+
+### 2.3 A `romwbw_versions[]` entry
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -79,7 +105,7 @@ See §5.
 | `status` | string | `"stable"` or `"preview"` today. Copied from `versions/<ver>/version.json`. Not a closed set — see §6. |
 | `default` | boolean | The version to select when the user has no preference. The index promises exactly one entry with `true`; `tools/verify_catalog.py:165-167` fails the release otherwise. |
 | `released` | string or null | Upstream release date, `YYYY-MM-DD`. `"2025-05-21"` for 3.5.1, `"2026-03-28"` for 3.6.0. Read with `.get()` (`tools/gen_catalog.py:276`), so null if a version file omits it. |
-| `hbios` | object | The version bytes for this release. See §2.3. |
+| `hbios` | object | The version bytes for this release. See §2.4. |
 | `release_tag` | string | The immutable GitHub tag holding this version's assets, `v0-romwbw-<ver>`. |
 | `catalog_url` | string | Absolute URL of `catalog-v0-<ver>.json`. |
 | `catalog_sha256` | string | 64 lowercase hex characters. The hash of the document at `catalog_url`. |
@@ -94,7 +120,7 @@ See §5.
 picker without downloading the catalog. They are not a promise about what the
 catalog contains beyond its length.
 
-### 2.3 The `hbios` object, and why it is in the index
+### 2.4 The `hbios` object, and why it is in the index
 
 Same shape in the index entry and in the catalog — both are copied verbatim from
 `versions/<ver>/version.json` (`tools/gen_catalog.py:201`, `:277`).
@@ -167,7 +193,7 @@ One per RomWBW version, on that version's immutable release tag.
 | `status` | string | Same value as the index entry's `status`. |
 | `release_tag` | string | `v0-romwbw-<ver>`. |
 | `base_url` | string | Download prefix, **ending in `/`**. Asset URL is `base_url + filename`. |
-| `hbios` | object | Same shape and values as the index entry's `hbios`. See §2.3. |
+| `hbios` | object | Same shape and values as the index entry's `hbios`. See §2.4. |
 | `upstream` | object | Where the stock material came from. See below. Note this is an *object*; a disk entry's `upstream` is a *string*. |
 | `notes` | array of string | Same array as the index entry's `notes`. May be empty. |
 | `roms` | array of object | See §3.2. |
@@ -217,7 +243,7 @@ this hash.
 These are the exact bytes a client's own validator will read after the download.
 A client that checks them *before* fetching rejects a ROM it could not run
 without spending 512KB. That is the same reason `ver_byte` and
-`upd_byte` are in the index (§2.3), one level finer.
+`upd_byte` are in the index (§2.4), one level finer.
 
 **`built_from`** says what went into the image:
 

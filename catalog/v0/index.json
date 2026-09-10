@@ -4,6 +4,10 @@
   "interface": "v0",
   "repo": "https://github.com/avwohl/romwbw_disks",
   "index_url": "https://github.com/avwohl/romwbw_disks/releases/download/catalog-v0/index-v0.json",
+  "help": {
+    "index_url": "https://github.com/avwohl/romwbw_disks/releases/download/help-v0/help_index.json",
+    "base_url": "https://github.com/avwohl/romwbw_disks/releases/download/help-v0/"
+  },
   "romwbw_versions": [
     {
       "romwbw_version": "3.5.1",

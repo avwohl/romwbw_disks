@@ -44,6 +44,15 @@ BUILD = os.path.join(ROOT, "build")
 INDEX_TAG = "catalog-%s" % IFACE
 DL = "https://github.com/%s/releases/download" % REPO
 
+# The tag carrying the in-app help topics, mutable for the same reason and with
+# the same justification: eight small text files that nothing caches against a
+# version.  It is named HERE and nowhere in any client, which is the point - the
+# index tells a client where the help is, so this tag can be renamed, re-cut or
+# moved to another host without a release of the Windows, Android, iOS or Linux
+# client.  A URL compiled into a client would have made that impossible for the
+# one subsystem that had no reason to be special.
+HELP_TAG = "help-%s" % IFACE
+
 
 def sha256(path):
     h = hashlib.sha256()
@@ -343,6 +352,16 @@ def build_index(versions):
         # content changes when a RomWBW version is added or promoted, so a
         # client never needs a new build to see a new version.
         "index_url": "%s/%s/index-%s.json" % (DL, INDEX_TAG, IFACE),
+        # Where the in-app help lives, so that no client compiles in a help URL.
+        # Optional by the compatibility rules - a client that predates this block
+        # ignores it and keeps whatever it was built with, and a client that
+        # knows it but finds it missing falls back to its bundled topics.
+        # base_url ends in "/" and is concatenated with a filename, the same
+        # contract as a version catalog's base_url.
+        "help": {
+            "index_url": "%s/%s/help_index.json" % (DL, HELP_TAG),
+            "base_url": "%s/%s/" % (DL, HELP_TAG),
+        },
         "romwbw_versions": entries,
     }
     outdir = os.path.join(BUILD, INDEX_TAG)
