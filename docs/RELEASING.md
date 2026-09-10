@@ -324,7 +324,7 @@ gh release create "$TAG" --repo "$REPO" --draft \
     --notes "Interface v0 assets for RomWBW $V.
 Built from $(git rev-parse --short HEAD) with tools/build_all.sh $V.
 Sizes and hashes: catalog-v0-$V.json.
-Entry point: https://github.com/$REPO/releases/download/catalog-v0/index-v0.json"
+Entry point: https://github.com/$REPO/releases/latest/download/index-v0.json"
 
 gh release upload "$TAG" --repo "$REPO" build/"$TAG"/*
 
@@ -761,7 +761,7 @@ downloaded assets:
 set -eu
 
 REPO=avwohl/romwbw_disks
-IDX="https://github.com/$REPO/releases/download/catalog-v0/index-v0.json"
+IDX="https://github.com/$REPO/releases/latest/download/index-v0.json"
 WORK="${1:-./published}"
 TOOLS="$(cd "$(dirname "$0")" && pwd)"   # or the path to romwbw_disks/tools
 

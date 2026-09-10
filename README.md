@@ -1,18 +1,26 @@
 # romwbw_disks
 
-**Under construction.** Nothing here is wired into a shipping client yet. The
-artifacts are built and published so the clients can be changed next; until
-they are, every released app still fetches its disks from the old location.
+All four clients read this catalog: romwbw_emu (`tools/romwbw-get`), ioscpm,
+cpmdroid and z80cpmw. Each compiles in the entry-point URL below and nothing
+else, so a new ROM, disk image or help topic reaches an installed app without
+any of them being rebuilt.
 
 ROM images and CP/M disk images for the RomWBW-based emulator clients, served
 from a two-level catalog:
 
     interface version (v0)  ->  RomWBW version (3.5.1, 3.6.0)  ->  ROMs + disks
 
-The entry point is one small, stable URL — `index-v0.json`, alone on the
-floating `catalog-v0` tag, which is cut last, after the assets it points at:
+The entry point is one small, stable URL — `index-v0.json`, fetched through
+`releases/latest/download/`, which names no tag at all:
 
-    https://github.com/avwohl/romwbw_disks/releases/download/catalog-v0/index-v0.json
+    https://github.com/avwohl/romwbw_disks/releases/latest/download/index-v0.json
+
+GitHub resolves that to whichever release carries the Latest flag, so where the
+index lives belongs to this repository and can move with no client release. It
+sits on `catalog-v0` today, cut last, after the assets it points at. It was
+addressed as `releases/download/catalog-v0/index-v0.json` until 29635dd, and
+clients built before that still ask for the tag by name — so `catalog-v0` stays
+alive for as long as any of them are in use.
 
 A client fetches that, offers the RomWBW versions it finds, and then fetches
 that version's catalog and its assets. Adding a RomWBW release, a ROM or a disk

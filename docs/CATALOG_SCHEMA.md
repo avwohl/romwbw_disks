@@ -22,7 +22,7 @@ RomWBW version that lists that version's ROMs and disks.
 
 **Step 1 — fetch the index.** One stable URL, compiled into the client:
 
-    https://github.com/avwohl/romwbw_disks/releases/download/catalog-v0/index-v0.json
+    https://github.com/avwohl/romwbw_disks/releases/latest/download/index-v0.json
 
 The `catalog-v0` tag carries this one small file and nothing else. Big
 artifacts never live on it, so re-cutting it costs one upload of a few
@@ -631,7 +631,7 @@ Three fetches.
 **1. The index.** The one URL compiled into the client.
 
 ```
-GET https://github.com/avwohl/romwbw_disks/releases/download/catalog-v0/index-v0.json
+GET https://github.com/avwohl/romwbw_disks/releases/latest/download/index-v0.json
 ```
 
 Walk `romwbw_versions[]` and keep what this build can run. A shipped client's
