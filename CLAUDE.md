@@ -89,6 +89,12 @@ parameterisation, which is proved by both trees building the same `emu_avw.rom`.
 `tools/check_source_drift.sh` is the check, and it skips when romwbw_emu is not
 beside this repo - so a green run on a machine without it has not checked.
 
+They are assembled with `um80` and `ul80` (`pip install um80`) and with nothing
+else. Do not install pasmo or z80asm, and do not add a fallback to one: these
+are MACRO-80 sources with `.z80`, a `.rel` intermediate and a separate link
+step, which is not what those tools read. `src/README.md` has the commands and
+the reason neither `.COM` source carries an `ORG`.
+
 `tools/cpm_disk.py` was NOT covered by that script, which is part of why its
 copy went unnoticed. If you add a shared file, add it to the drift check in the
 same commit, or do not add it.
