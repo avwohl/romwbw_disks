@@ -709,10 +709,15 @@ contract; six dispatcher bugs that 3.6.0 made reachable were found and fixed in
 the boot path, the device inventory, every implemented function and 3.6.0's new
 surface, but not all 268 KB of `hbios.asm`.
 
-**Does `cpmemu/util/cpm_disk.py` have one home or two?** This repository now
-vendors it at `tools/cpm_disk.py` as the canonical copy. `cpmemu`'s copy stays
-for now because `cpmemu/src/makefile:207` installs it as `cpm_disk`, and the
-separate `mpm2` repository (not checked out in this environment) calls it
-through a `$CPM_DISK` variable defaulting to `~/src/cpmemu/util/cpm_disk.py`.
-Removing it would break both. Whether the two copies get reconciled, or one
-becomes a shim, is not decided here.
+**Does `cpmemu/util/cpm_disk.py` have one home or two?** Settled: one, in
+`cpmemu`. This repository vendored a copy at `tools/cpm_disk.py` and called it
+"the canonical copy", but no script, workflow or Makefile here ever invoked it,
+while `cpmemu`'s copy is installed as `cpm_disk` by `cpmemu/src/makefile:207`
+and driven by the separate `mpm2` repository through `$CPM_DISK`. The copy with
+no consumers had claimed ownership over the copy with two. The copy here is
+deleted; nothing in this repository changed behaviour, because nothing used it.
+
+What made the duplication cost something rather than merely being untidy: the
+two files were byte-identical, `check_source_drift.sh` does not compare them —
+it covers `r8.asm`, `w8.asm` and `emu_rom.asm` — and `cpmemu` has since fixed a
+silent data bug in the combo path that this copy would have kept.

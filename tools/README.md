@@ -17,7 +17,6 @@ of it or a check on it.
 | `check_source_drift.sh` | do this repo's Z80 sources still agree with romwbw_emu's? Three must be byte-identical; `emu_hbios.asm` must differ only by its generated `romwbw_ver.inc` parameterisation, which is proved by both trees building the same `emu_avw.rom`. Skips when romwbw_emu is not beside this repo. |
 | `boot_test.sh` | asks romwbw_emu which RomWBW releases it can run, then holds it to that answer: each one it can run must boot to a CP/M prompt with the right `CBIOS v<ver> [WBW]` banner and no mismatch warning, report the release it read from the ROM, warn on a disk from another release, and round-trip a file through `R8`/`W8`; each one it cannot must be refused by name. Skips when no emulator is present. |
 | `diskinfo.py` | the single source of image facts: bootability, CBIOS banner, directory contents |
-| `cpm_disk.py` | CP/M image creation and file transfer for sssd, hd1k and combo formats |
 | `diskdefs` | cpmtools definitions, including the `wbw_hd1k_0..5` combo slices no distribution ships |
 
 ## Releases only, never snapshots
@@ -43,20 +42,28 @@ the result.
 
 Run `tools/check_upstream.sh` to see where things stand.
 
-## Why `cpm_disk.py` is here
+## Where `cpm_disk.py` went
 
-It is the family's only tool that can *create* an hd1k or combo image from
-nothing. It came from `cpmemu/util/cpm_disk.py`, which is also what the
-separate [mpm2](https://github.com/avwohl/mpm2) repo drives through its
-`$CPM_DISK` variable in `scripts/build_hd1k.sh`.
+It used to be vendored here, and this file called this copy "the canonical
+one". It was the opposite: nothing in this repository ever called it — the
+published images all start life as stock upstream images, so `cpmcp` was
+enough — while `cpmemu`'s copy is the one `cpmemu/src/makefile:207` installs as
+`cpm_disk` and the one the separate
+[mpm2](https://github.com/avwohl/mpm2) repo drives through its `$CPM_DISK`
+variable. The copy with no consumers claimed ownership over the copy with two.
 
-This copy is the canonical one. `cpmemu`'s stays for now because
-`cpmemu/src/makefile:207` installs it as `cpm_disk` and removing it would break
-both that and mpm2. Point those at this copy before deleting the other.
+So it is gone from here and `cpmemu/util/cpm_disk.py` is the only one. If this
+repository ever needs it — for building an image this project defines rather
+than adapts, which is the case `cpmcp` cannot cover — call it out of a sibling
+checkout the way `check_source_drift.sh` already reaches for `romwbw_emu`,
+rather than taking a copy.
 
-Nothing in the current pipeline calls it — the published images all start life
-as stock upstream images, so `cpmcp` is enough. It is here for the case that
-does not: building an image this project defines rather than adapts.
+The two copies were byte-identical right up to the day they were not: a bug
+fixed in `cpmemu` (`ComboDisk` addressed file data 16384 bytes before the block
+numbers said, so reading any file out of a combo image returned a neighbouring
+file's bytes) would have had to be applied here by hand, and nothing compared
+them. `check_source_drift.sh` covers `r8.asm`, `w8.asm` and `emu_rom.asm`; it
+never covered this file.
 
 ## Why `diskdefs` is here
 

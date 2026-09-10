@@ -155,7 +155,7 @@ machine that can build these is not necessarily one that can run them.
 
 ```
 src/        Z80 sources: w8.asm, r8.asm, emu_hbios.asm, emu_rom.asm
-tools/      the build and verify pipeline, plus cpm_disk.py and diskdefs
+tools/      the build and verify pipeline, plus diskdefs
 versions/   one directory per RomWBW release: version, roms, disks, generation
 catalog/    the generated catalogs, committed so changes show up in a diff
 build/      output (gitignored)
