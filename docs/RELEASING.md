@@ -603,8 +603,15 @@ Those tags are not this repository's, but publishing here does not retire them,
 and nothing about this migration makes them safe to remove. They stay until no
 installed build points at them, which in practice means indefinitely.
 
-**`tools/check-shipped-disks.sh` is four different scripts.** It was added to
-five repos — cpmdroid, cpmemu, ioscpm, romwbw_emu and z80cpmw; romwbw_disks has
+**`tools/check-shipped-disks.sh` is gone from all of them, and was four
+different scripts while it lasted.** All four remaining copies were deleted on
+2026-09-13, finishing what cpmemu started: the ports keep only
+`check-store-version.sh`, run by hand, and nothing now checks from a tree
+whether a published image carries what it claims. The divergence recorded below
+is why that is less of a loss than it sounds — no two copies agreed, so "the
+check passed" meant four different things depending on where it ran.
+
+It was added to five repos — cpmdroid, cpmemu, ioscpm, romwbw_emu and z80cpmw; romwbw_disks has
 never had it — and on 2026-09-10 cpmemu deleted its copy (`294ee01`, "this
 repository has no disks to check"): cpmemu is not in the script's ports table,
 ships no disk image, and ran it from no workflow. Four carry it now, and no two
