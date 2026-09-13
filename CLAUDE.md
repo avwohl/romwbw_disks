@@ -117,3 +117,23 @@ the same failure `tools/check-store-version.sh` exists for in the clients. This
 README said "Nothing here is wired into a shipping client yet" for some time
 after all four clients had migrated. Measure before writing such a sentence, and
 prefer not writing one.
+
+## What is committed but not published
+
+`sh tools/unreleased.sh` reports the gap that matters most in this family,
+because it is the shortest: clients compile in one URL and read everything else
+out of documents published here, so a catalog published in this repository
+reaches ALREADY-INSTALLED clients on their next fetch, with no release of any app
+on any platform. The gap between committed and published is one asset upload
+wide.
+
+It compares the published `index-v0.json` with `catalog/v0/index.json`, then
+follows each `catalog_url` **out of the published index** — resolving the address
+the way a client does rather than constructing it — and compares each
+per-release catalog and each help topic against what is actually served.
+
+**Do not add it to `verify.yml`.** That workflow builds and tests this
+repository, which is what CI is for; what a release channel is serving is not.
+Four jobs asking that question across this family were deleted on 2026-09-13.
+No exit 1: 0 even when the catalog has moved and not been published, 2 only when
+it could not measure.
