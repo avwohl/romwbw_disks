@@ -198,7 +198,7 @@ Upstream's ROMs are not all 512 KB, and that was already true in 3.5.1. Of the
 `hdiag.rom` is 1,550. 3.5.1's `Binary/` has the same shape: 36 of 44 at
 512 KB, six at 384 KB, `RCZ280_zzrcc_std.rom` at 256 KB and the same
 `hdiag.rom`. The two this repo splices — `SBC_simh_std.rom` and
-`RCZ80_std.rom` — are 512 KB in both releases, and `tools/build_rom.sh:82`
+`RCZ80_std.rom` — are 512 KB in both releases, and `tools/build_rom.sh` (its `filesize ... = "524288"` guard)
 refuses a stock ROM that is not.
 
 3.6.0 appends new device IDs: `DIODEV_USB` `0x0F`, `DIODEV_ESPSD` `0x10`,
@@ -489,7 +489,7 @@ string.
 1. **The input is fetched, not found.** `tools/fetch_romwbw.sh` downloads the
    `upstream.package_url` named in `versions/<ver>/version.json` and checks it
    against `upstream.package_sha256` before anything is extracted
-   (`tools/fetch_romwbw.sh:36-57`). A snapshot's archive would not match the
+   (the `package_sha256` comparison in `tools/fetch_romwbw.sh`). A snapshot's archive would not match the
    pinned hash. No script in this tree takes a ROM path from its caller: the
    only stock ROM a build reads is the one `fetch_romwbw.sh` unpacked. The
    cache directory it unpacks into (`$ROMWBW_CACHE`, default `$HOME/esrc`,
@@ -549,7 +549,7 @@ Substitute the real version number for `3.7.0` throughout.
 
 3. **Create `versions/3.7.0/roms.json`.** Copy the 3.6.0 file and change
    `romwbw_version`. Only edit the entries if upstream renamed one of the two
-   stock ROMs or changed its size — `tools/build_rom.sh:82` requires 512 KB.
+   stock ROMs or changed its size — `tools/build_rom.sh` (its `filesize ... = "524288"` guard) requires 512 KB.
 
 4. **Create `versions/3.7.0/disks.json`.** List `Binary/hd1k_*.img` from the
    extracted release and write one entry per image **except `hd1k_blank.img`**.
