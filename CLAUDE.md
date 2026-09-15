@@ -24,7 +24,9 @@ every installed client at a release with no `index-v0.json` on it.
 
 That has already happened once, on 2026-09-10, and the URL answered 404 until
 the flag was put back. `tools/check_latest.py` exists to fail this repository if
-the URL a client really uses ever stops being the index. `tools/publish_release.sh`
+the URL a client really uses ever stops being the index - **but nothing runs
+it.** It is in no workflow, in no script and in no step of docs/RELEASING.md.
+Run it by hand after a re-cut, or wire it in. `tools/publish_release.sh`
 passes `--latest` when it cuts `catalog-v0` and `--latest=false` elsewhere;
 do not add a release-creating path that omits either.
 
@@ -102,12 +104,17 @@ same commit, or do not add it.
 ## Help topics live here
 
 `help/` holds the seven help documents, published on the `help-v0` tag and named
-by the index's `help` block with a size and a sha256 each. All four clients read
-them from the catalog. Two clients also bundle a copy as an offline floor -
-ioscpm's `release_assets/` (which z80cpmw's `.rc` also compiles from) and
-cpmdroid's `app/src/main/assets/help/`. Rewriting a topic here leaves those
-stale until they are refreshed; ioscpm's `tools/check-help-assets.py` is what
-notices.
+by the index's `help` block with a size and a sha256 each. **Three** clients read
+them from the catalog - ioscpm, cpmdroid and z80cpmw. romwbw_emu, the fourth
+client and the reference one, has no help subsystem at all: `tools/romwbw-get`
+fetches ROMs and disks and nothing else.
+
+Two of the three also bundle a copy as an offline floor - ioscpm's
+`release_assets/` (which z80cpmw's `.rc` also compiles from) and cpmdroid's
+`app/src/main/assets/help/`. Rewriting a topic here leaves those stale until
+they are refreshed. ioscpm's `tools/check-help-assets.py` notices for the
+ioscpm/z80cpmw pair; **cpmdroid's bundled copy is covered by nothing**, so a
+rewritten topic leaves the Android offline floor stale silently.
 
 ## Before claiming what is shipped
 
