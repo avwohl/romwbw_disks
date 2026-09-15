@@ -10,7 +10,7 @@ Two things get published, and they are published differently:
 | What | Tag | Mutable? | Size |
 |---|---|---|---|
 | ROMs, disk images, `catalog-v0-<ver>.json`, `disks-v0-<ver>.xml` | `v0-romwbw-<ver>` | **No.** Immutable once a client has shipped against it — see section 5. | 202 MB (3.5.1), 234 MB (3.6.0) |
-| `index-v0.json` | `catalog-v0` | Yes. Re-cut whenever the set of versions changes. | 2942 bytes |
+| `index-v0.json` | `catalog-v0` | Yes. Re-cut whenever the set of versions changes. | 5421 bytes |
 
 Section 4 explains why the split exists.
 
@@ -61,7 +61,9 @@ malfunctioning. A pin would convert a real behaviour change into a silent
 "nothing to see here" until someone bumped the pin.
 
 This is not hypothetical. `um80` 0.3.42 assembled `add a,'a'-'A'` in `w8.asm` as
-`add a,0`, and CPMDroid still carries a runtime hot-patch for it at
+`add a,0`. CPMDroid carried a runtime hot-patch for it, since removed - the
+code at that site now says "No image is edited on the way in, deliberately" -
+which used to be at
 `cpmdroid/app/src/main/cpp/emu_io_android.cpp:1129-1147` — it scans every loaded
 disk image for the bytes `fe 41 d8 fe 5b d0 c6 00` and pokes byte 7 to `0x20`.
 The `w8.com` this repo builds contains the fixed sequence `fe41d8fe5bd0c620`, so
@@ -174,6 +176,12 @@ and `catalog/v0/index.json`.
 `gen_catalog.py --index` regenerates only the index. Use that when you promote a
 version's `status` or move `default` in a `version.json` and nothing was rebuilt.
 
+> **Stale as of 2026-09:** `checkCatalogVersionAndInvalidate` and
+> `deleteCatalogDisks(named:)` no longer exist in ioscpm. The replacement,
+> `recordCatalogGeneration`, deletes nothing - the per-asset sha256 is the
+> freshness trigger.
+
+
 The `generation` counter is content-derived on purpose. iOS's
 `checkCatalogVersionAndInvalidate` compares it against a stored value and calls
 `deleteCatalogDisks` when it differs, so it must not move when nothing moved — a
@@ -223,7 +231,8 @@ Separately, `emu_avw-v0-3.5.1.rom` has
 sha256  4b11402a29fad22de304775b7c415eb6a74600df06bd57828b9931a7e9693258
 ```
 
-which is byte-identical to the `emu_avw.rom` bundled in all four clients today.
+which is byte-identical to the ROM all four clients fetch from this catalog;
+none of them bundles one any more.
 The rebuilt `w8.com` and `r8.com` (1792 bytes each, `9e69cb68…` and `18515399…`)
 are byte-identical to the copies inside the currently shipped `hd1k_combo.img`.
 This repo is a recipe for the binaries that already ship, not a new set of them.
@@ -262,17 +271,18 @@ All four lists must be empty and both counts must read 53.
 
 From a directory holding all four client checkouts:
 
+**This check no longer has five of its six inputs.** Every client removed its
+tracked ROM during the catalog migration, so there is nothing in a checkout to
+compare against - `find` across all four returns no `.rom` at all. What can
+still be checked is the build against what is published:
+
 ```sh
-shasum -a 256 \
-  romwbw_emu/roms/emu_avw.rom \
-  romwbw_emu/web/emu_avw.rom \
-  z80cpmw/roms/emu_avw.rom \
-  ioscpm/iOSCPM/Resources/emu_avw.rom \
-  cpmdroid/app/src/main/assets/emu_avw.rom \
-  romwbw_disks/build/v0-romwbw-3.5.1/emu_avw-v0-3.5.1.rom
+shasum -a 256 build/v0-romwbw-3.5.1/emu_avw-v0-3.5.1.rom
 ```
 
-All six lines must read `4b11402a29fad22de304775b7c415eb6a74600df06bd57828b9931a7e9693258`.
+It must read `4b11402a29fad22de304775b7c415eb6a74600df06bd57828b9931a7e9693258`,
+which is the sha256 the published catalog carries for that asset - so a rebuild
+reproduces what clients are fetching.
 
 Note that `docs/ROM_ATTESTATION.md` in ioscpm is an Apple App Store filing that
 names `emu_avw.rom` specifically and cites `github.com/avwohl/romwbw_emu` as the
@@ -378,7 +388,7 @@ Two independent reasons, and both matter.
 that never changes and always tells the truth about which RomWBW versions exist —
 that is the whole reason this repo exists, so that adding RomWBW 3.7.0 does not
 require rebuilding four apps. That URL therefore has to be re-published every time
-the version set changes. `index-v0.json` is 2942 bytes. If the index shared a tag
+the version set changes. `index-v0.json` is 5421 bytes. If the index shared a tag
 with the artifacts, re-cutting it would sit next to 51 MB disk images and invite
 someone to re-upload one, which would churn a file that clients have already
 downloaded and cached by name.
@@ -391,6 +401,12 @@ artifacts must be immutable: once a client build has shipped with that URL
 compiled or cached into it, that URL is a permanent obligation. The only way to
 have a moving pointer at all is to put the moving part somewhere the immutable
 part is not.
+
+> **Stale as of 2026-09:** `checkCatalogVersionAndInvalidate` and
+> `deleteCatalogDisks(named:)` no longer exist in ioscpm. The replacement,
+> `recordCatalogGeneration`, deletes nothing - the per-asset sha256 is the
+> freshness trigger.
+
 
 Client-side, three things make the immutability load-bearing rather than
 theoretical. Download directories in all three GUI clients are flat and keyed on
@@ -414,7 +430,7 @@ resolves to the bytes it always resolved to, or a shipped client fails.
 
 **Never change a published asset in place.** The only asset in this repository
 that is ever replaced is `index-v0.json` on `catalog-v0`, and that is safe only
-because it is 2942 bytes, is fetched fresh, and has nothing cached downstream
+because it is 5421 bytes, is fetched fresh, and has nothing cached downstream
 of it.
 
 `tools/publish_release.sh` enforces this rather than relying on discipline. It
@@ -594,7 +610,9 @@ while the Store serves 1.0.23). Read it out of the commit that minted the store'
 version number, or out of the artifact — in a z80cpmw package it is UTF-16LE,
 being a `std::wstring`. To learn whether the tags still MATTER, `HEAD` is exactly
 right, and the answer is bigger than installed binaries: all three current trees
-still fetch in-app help from `avwohl/ioscpm/releases/latest/download/`
+used to fetch in-app help from `avwohl/ioscpm/releases/latest/download/`; none
+compiles in a help URL any more, and help now comes from this repository's own
+index `help` block
 (`HelpView.swift:187-188`, `HelpWindow.cpp:24,26`, `HelpActivity.kt:334`), which
 resolves to `v1.4.12` today. Deleting it breaks help in builds made from HEAD,
 never mind the ones users have.
@@ -722,7 +740,7 @@ do it deliberately (`ioscpm/.../HelpView.swift:187-188`,
 fallback at `:334`), iOS and Windows at ioscpm's `releases/latest/download/` and
 CPMDroid at its own repo's, with an ioscpm URL only as the `base_url` default at
 `:334`. If a future client ever reaches for `releases/latest` on this repo, the
-only thing that is safe to find there is a 2942-byte index. Keeping `catalog-v0`
+only thing that is safe to find there is a 5421-byte index. Keeping `catalog-v0`
 marked Latest makes the wrong guess degrade into the right answer.
 
 Check what is actually live rather than what you meant to do. `gh release view`
@@ -916,7 +934,8 @@ version's own assets: `catalog-v0-<ver>.json` is on the immutable
 saying `stable` and nothing else. The index is what a client reads `status`
 from, so the index is what has to move.
 
-`tools/publish_release.sh` is undocumented — it appears neither in this document's
+`tools/publish_release.sh` was once undocumented. It is described in sections 4,
+5 and 6 above now. This item is closed; it appeared neither in this document's
 original text nor in `tools/README.md`'s script table — and it sets `--prerelease`
 in a way section 6 rules out. Either wire it into this document properly or
 delete it before someone runs it expecting section 4's behaviour.

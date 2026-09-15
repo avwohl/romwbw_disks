@@ -58,9 +58,9 @@ Those names and codes are the emulator's, from
 A guest loads `B` with the function number and executes `RST 08`. The page-zero
 vector jumps to the bank-0 proxy at `0xFFF0` (`src/emu_hbios.asm:64-66`), which
 does `OUT (0xEF),A` — and that `OUT` is what the emulator traps
-(`romwbw_emu/src/hbios_cpu.cc:125`). The emulator also uses `0xEC` for bank
+(`romwbw_emu/src/hbios_cpu.cc:135`). The emulator also uses `0xEC` for bank
 copy, `0xED` for bank call and `0xEE` for signalling
-(`src/emu_hbios.asm:45-48`, `romwbw_emu/src/hbios_cpu.cc:71,106,120`).
+(`src/emu_hbios.asm:45-48`, `romwbw_emu/src/hbios_cpu.cc:71,116,130`).
 `HOST_PATH_MAX` is 256 (`romwbw_emu/src/hbios_dispatch.h:210`).
 
 ### Capabilities, not a version number, inside the ABI

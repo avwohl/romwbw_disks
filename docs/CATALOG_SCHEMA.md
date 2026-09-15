@@ -135,7 +135,7 @@ size and hash, so they cannot be authored wrong.
 | `release_tag` | string | The immutable GitHub tag holding this version's assets, `v0-romwbw-<ver>`. |
 | `catalog_url` | string | Absolute URL of `catalog-v0-<ver>.json`. |
 | `catalog_sha256` | string | 64 lowercase hex characters. The hash of the document at `catalog_url`. |
-| `catalog_size` | integer | Bytes of that document. `11826` for 3.5.1, `14694` for 3.6.0. |
+| `catalog_size` | integer | Bytes of that document. `11826` for 3.5.1, `15062` for 3.6.0. |
 | `generation` | integer | Copy of the catalog's `generation`. See §4. Present here so a client can decide whether to re-fetch a catalog it already has. `tools/verify_catalog.py:181-183` fails the release if the two disagree. |
 | `disks_xml_url` | string | Absolute URL of `disks-v0-<ver>.xml`, the legacy shape. See §5. |
 | `rom_count` | integer | `len(roms)` in that catalog. `2` for both published versions. |
@@ -380,6 +380,14 @@ content hash is used on its own.
 
 ### 4.1 Why it has to be exactly this
 
+> **Since 2026-09: iOS no longer deletes on a generation bump.**
+> `checkCatalogVersionAndInvalidate` and `deleteCatalogDisks(named:)` are gone.
+> The replacement, `recordCatalogGeneration`, only writes the value down - the
+> per-asset sha256 is the freshness trigger, so a bumped generation invalidates
+> nothing by itself. The contract below describes what `generation` is FOR, not
+> what any client does with it today.
+
+
 iOS treats a change to this value as an instruction to delete files.
 `checkCatalogVersionAndInvalidate` reads the `UserDefaults` key
 `"catalogVersion"`; when the published value differs it calls
@@ -408,7 +416,7 @@ So: hash the content, and bump a stored counter only when the hash changes.
 
 `versions/<ver>/generation.json` holds three keys: `generation` (integer),
 `content_sha256` (string), and a `_comment` saying it is machine-written. Both
-published versions are currently at `generation: 1` — the first run of the
+published versions are currently at `generation: 2` — the first run of the
 generator took each from 0 to 1.
 
 Two consequences worth stating plainly:
@@ -638,7 +646,7 @@ Walk `romwbw_versions[]` and keep what this build can run. A shipped client's
 bundled core is built for RomWBW 3.5.1, so it keeps the entry whose
 `hbios.ver_byte` is `"0x35"` and `hbios.upd_byte` is `"0x10"` —
 `romwbw_version` `"3.5.1"`, `status` `"stable"`, `default` `true`,
-`generation` `1`. It has not downloaded a single byte of ROM to work this out.
+`generation` `2`. It has not downloaded a single byte of ROM to work this out.
 
 A client rebuilt on `romwbw_emu` v1.39 or later asks its core per entry
 (`emu_romwbw_release_supported({ver_byte, upd_byte})`) instead of comparing
@@ -655,7 +663,7 @@ Verify against the index entry before parsing:
 
 ```
 catalog_size    11826
-catalog_sha256  7a5411b329be606c2bcc7b8d2b051b8fca9a2906f780d65fc98221cb6b61ed65
+catalog_sha256  942803d1ed67bcd8c6e0a9b730f9a08775618535b8e9affc58c56830839a78fd
 ```
 
 Compare the catalog's `generation` (`1`) against the stored value for RomWBW
@@ -688,11 +696,8 @@ CBIOS matches the ROM, so no `HBIOS/CBIOS Version Mismatch` warning; and
 The matching ROM comes from the same catalog's `roms[]`:
 `emu_avw-v0-3.5.1.rom`, `size` `524288`, `sha256`
 `4b11402a29fad22de304775b7c415eb6a74600df06bd57828b9931a7e9693258` — which is
-byte-identical to the `emu_avw.rom` bundled in `ioscpm`, `cpmdroid`, `z80cpmw`
-and `romwbw_emu` today. Its `hcb.version` `"0x35"` and `hcb.update` `"0x10"`
-are the bytes `emu_validate_rom_hcb` will read at `0x105`/`0x106` after the
-download, so a client that checked them in step 1 already knows the load will
-succeed.
+byte-identical to the ROM all four clients now fetch from this catalog; none
+of them bundles one any more.
 
 To check the same thing from outside, download a tag's assets into a directory
 and run `tools/verify_catalog.py <catalog.json> <asset-dir>`. It re-reads the

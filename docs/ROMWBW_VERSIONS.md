@@ -47,8 +47,8 @@ Upstream wwarthen/RomWBW (newest carried here: 2026-03-28):
 
 | RomWBW | Upstream tag | Released | Status | HCB bytes | ROMs | Disks |
 |---|---|---|---|---|---|---|
-| 3.5.1 | `v3.5.1` | 2025-05-21 | stable (default) | `35 10` | 2 | 20 |
-| 3.6.0 | `v3.6.0` | 2026-03-28 | stable | `36 00` | 2 | 24 |
+| 3.5.1 | `v3.5.1` | 2025-05-21 | stable | `35 10` | 2 | 20 |
+| 3.6.0 | `v3.6.0` | 2026-03-28 | stable (default) | `36 00` | 2 | 24 |
 
 `Package.zip` sha256, as pinned in `versions/<ver>/version.json`:
 
@@ -443,11 +443,12 @@ choose one. A bundled ROM should remain only as a first-launch fallback, so the
 app boots offline out of the box and the App Store filing keeps its reviewed
 asset.
 
-The note inside the published catalog still describes the old refusal, citing
-`emu_init.cc:52-60` and `ROMWBW_PIN_STR`. It is not corrected in place because
-that catalog is published on the immutable `v0-romwbw-3.6.0` tag and this repo
-never rewrites a published asset. It gets corrected the next time that
-version's assets are legitimately re-cut.
+The note inside the published catalog used to describe the old refusal, citing
+`emu_init.cc:52-60` and `ROMWBW_PIN_STR`. It was not corrected in place -- this
+repo never rewrites a published asset -- and was corrected when 3.6.0's assets
+were next re-cut, at `generation: 2`. It now reads "Promoted out of preview
+2026-09-05. romwbw_emu v1.39 reads the RomWBW version out of the loaded ROM
+instead of a compile-time pin".
 
 ## The dev-snapshot trap
 
