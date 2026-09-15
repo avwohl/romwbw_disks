@@ -155,108 +155,16 @@ catalogGeneration.v0.3.6.0.  The advice was taken; the sentence should say so.
   Raised from ioscpm, where this had been sitting in KNOWN_PROBLEMS.md as "that
 section is in another repository and needs a human's edit".
 
-- [ANY] STANDING: do NOT delete the duplicated Z80 sources in romwbw_emu/src.
-docs/CLIENT_MIGRATION.md step 6 listed them as cleanup and listing them was
-wrong.  r8.asm, w8.asm, emu_hbios.asm and emu_rom.asm have seven live consumers
-in that repository, because romwbw_emu still builds and verifies its own bundled
-ROM and its own two tracked disk images from them - rebuild_disk_utils.sh
-assembles them, verify_disk_utils.sh checks the result, build_from_source.sh
-builds the ROM, src/makefile's test target runs the first, and CI asserts the
-counts.  Deleting them would not be cleanup; it would be a decision to make
-romwbw_emu a consumer of what this repository publishes, and it needs a
-replacement for all of that first.
+- [ANY] STANDING: tools/check_source_drift.sh needs romwbw_emu/src/{r8,w8,
+emu_hbios,emu_rom}.asm to exist, so deleting one there turns this repository's
+check red.  romwbw_emu holds the matching "do not delete these" rule in its own
+.claude/CLAUDE.md, which is where it belongs - what is recorded here is only
+this repository's dependency on them.
   Having the same file in two repositories is the price of the two building
-independently.  tools/check_source_drift.sh compares them on every push, and
-they agree: three are byte-identical, emu_hbios.asm differs only by taking its
-version from the generated romwbw_ver.inc, and both trees build emu_avw.rom to
-the same 4b11402a....
-  The other three cleanup items were done on 2026-09-05: romwbw_emu's
-disks/disks.xml and its archive/romwbw-v3.6.0 dev snapshot, and z80cpmw's
-packaging/scripts/verify-disk-assets.sh.  Each was verified not to break
-anything first; the commit messages carry the evidence.
+independently.  check_source_drift.sh compares them on every push: three are
+byte-identical, and emu_hbios.asm differs only by taking its version from the
+generated romwbw_ver.inc.  Since fe08145 the check assembles BOTH trees'
+emu_hbios.asm and compares the 32 KB bank 0 rather than a built ROM, so it no
+longer depends on romwbw_emu tracking an artifact - which it has not since
+v1.40.
 
-SETTLED DECISIONS AND STANDING FACTS, KEPT ONLY AS POINTERS
--------------------------------------------------------------------------------
-Nothing here is a task.  Each was either decided rather than merely done - and a
-decision that leaves no trace gets re-litigated - or is a constraint that will
-never be "done" and has to keep being true.  The reasoning is where the pointer
-says, not repeated here.
-
-- The clients fetch the ROM from the catalog (2026-09-05): ioscpm build 65
-  cf8d2f7, cpmdroid bb0ac74, z80cpmw 17c72fa.  A new RomWBW version now needs a
-  release HERE and nowhere else, which was the point of this repository.  The
-  bundled ROM stays as a first-launch fallback and is byte-identical to the
-  published emu_avw-v0-3.5.1.rom - a standing obligation, not a one-off: when
-  generation 2 moved those bytes all three bundles were refreshed to 4b11402a on
-  2026-09-06 (ioscpm 5834d92, cpmdroid 19b3563, z80cpmw cd1fb2b, which carries
-  two copies).  ioscpm's docs/ROM_ATTESTATION.md was rewritten
-  to describe the download; filing it is a person's job and ioscpm's todo has it.
-
-- Generation 2 is published for both releases (2026-09-06), and the respin
-  question RELEASING.md left open is now DECIDED there in section 5: overwrite
-  the assets in place and bump generation, never invent a -r2 name, because all
-  three clients key saved state on the filename.  It was safe exactly once,
-  because no shipped client could see these URLs at all.  The evidence for that
-  is NOT git tag --contains, which was the first check tried and is worthless
-  here: these repositories release without tagging, and on 2026-09-06 the App
-  Store was serving ioscpm 1.5.1 for which no tag exists.  What settles it is
-  what the shipped source fetches - ioscpm's Store 1.5.1 is build 61 (af0b9b2,
-  on v1.4.12), cpmdroid's Play 1.25 is versionCode 27 (on v1.4.5) and z80cpmw's
-  Store 1.0.23 is on v1.4.5, and index-v0 first entered any client tree at
-  ioscpm ffbe12c, which has never been compiled.  RELEASING.md section 5 has the
-  three-step recipe and the traps in each step.  That window is closed; after a
-  client ships, a correction is a new RomWBW version entry or nothing.
-  What moved the bytes was the HB_BNKCALL fix (romwbw_emu e47c948) landing in
-  bank 0.  Only the four ROMs changed (c7abc580->4b11402a, ee3adea5->03e64691,
-  2f4a6252->01d1ca6d, 70196de9->9b204cd7).  All 44 disk images are byte-identical
-  across both catalogs and were not re-uploaded.
-
-- The pre-v0 hd1k_combo is equivalent and is NOT refreshed: 19 of 20 published
-  images are byte-identical across the two catalogs, and the combo's 2,342
-  differing bytes are CP/M slack between the same 94 identical files.
-  docs/FINDINGS.md section 10 has the measurements.  Implemented in ioscpm and
-  z80cpmw, keyed on provenance so a downloaded image can never be blessed by it;
-  cpmdroid needed no change and its todo warns whoever adds image hashing.
-
-- Only one client ever needed um80, and none builds Z80 code in its own build.
-  It was z80cpmw's packaging/scripts/verify-disk-assets.sh, deleted 2026-09-05
-  once its 06 e9 cf HBF_HOST_CAPS probe was confirmed asserted here instead - at
-  build time in tools/build_utils.sh and against every published image carrying
-  w8.com in tools/verify_catalog.py.
-
-- The ioscpm release tags stay live forever regardless of the migration.
-Every build already in users' hands is hardwired to
-releases/download/v1.4.12/, and GitHub release asset URLs cannot be redirected.
-Retiring those tags would break every installed client at once.
-
-  THE HELP HALF OF THIS IS NOW PARTLY DONE.  The help topics live here, as the
-  eight assets of the mutable help-v0 tag, and index-v0.json carries a `help`
-  block naming index_url and base_url (docs/CATALOG_SCHEMA.md section 2.2).  No
-  client compiles in that tag or any URL under it, so the help can be re-cut,
-  renamed or moved to another host with no client release on any platform -
-  which is the property the whole catalog exists to provide and the one place it
-  had been left out of.
-  THE ENTRY POINT NO LONGER NAMES A TAG EITHER, which is the bigger half.  Every
-  client compiled in releases/download/catalog-v0/index-v0.json, so this
-  repository could add a RomWBW version freely - that goes inside the index - but
-  could never rename that release, move the index, or publish a v1 anywhere a
-  shipped client would look.  INTERFACE_V0.md's own migration plan said "a v1
-  lives alongside v0: new release tags, A NEW INDEX URL", which is unreachable
-  from a constant naming the old one, so the plan silently meant "release
-  Windows, Android, iOS and Linux at once".  It is
-  releases/latest/download/index-v0.json now; a v1 ships as index-v1.json beside
-  it on the same Latest release and nobody rebuilds anything.
-  THE COST IS ONE FLAG: gh release create takes Latest by default, so any release
-  cut without --latest=false repoints every client at a release with no index.
-  That happened here on 2026-09-10 cutting help-v0.  tools/check_latest.py fetches
-  the URL and fails the repository if it is not the index; run it in CI.
-  z80cpmw reads the block as of its 1.0.32.  IOSCPM AND CPMDROID STILL FETCH
-  HELP FROM avwohl/ioscpm/releases/latest, so that tag is still load-bearing for
-  them; each of those repositories owns its own change and this line is only the
-  record of what this repository now offers.  The assets published here are
-  byte-identical to what ioscpm's Latest was serving on 2026-09-10 except
-  help_index.json, whose base_url names this tag - so a port can switch over
-  without any content moving under it.
-  ioscpm's release_assets/help_*.md is now a SECOND COPY of these files and the
-  two will drift.  Deciding which is the source - most likely this one, with
-  ioscpm's copy becoming its offline fallback only - is what is left.
