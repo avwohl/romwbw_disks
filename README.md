@@ -61,7 +61,7 @@ One immutable release tag per RomWBW version, plus two mutable tags.
 
 | Tag | Mutable? | Contents |
 |---|---|---|
-| `catalog-v0` | yes, rewritten when a version is added | `index-v0.json` only, a few KB |
+| `catalog-v0` | yes, rewritten when a version is added or a help topic changes | `index-v0.json` only, a few KB |
 | `help-v0` | yes, re-cut when a topic changes | the in-app help topics, named by the index's `help.base_url` |
 | `v0-romwbw-<ver>` | **no** | that release's ROMs, disk images, catalog and legacy XML |
 
@@ -96,9 +96,12 @@ a boot track that was never written, left at the CP/M fill byte `0xE5`.
 ## Building
 
 Needs `um80` and `ul80` (`pip install um80`), `cpmtools`, `python3`, `curl` and
-`unzip`. The upstream package is unpacked into `$ROMWBW_CACHE` (default
-`$HOME/esrc`), deliberately outside the repo — a 199 MB zip becomes about 1 GB,
-so make sure that filesystem has room before you start.
+`unzip`. Downloads and extracts under `$ROMWBW_CACHE` (default `$HOME/esrc`),
+deliberately outside the repo and shared between versions. `fetch_romwbw.sh`
+pulls only what a build needs out of each archive — the two stock ROMs and the
+generic hd1k images — because the full unpack would be about a gigabyte per
+release; the ~199 MB zip is kept beside it and re-checked against the sha256 in
+`versions/<ver>/version.json`.
 
 ```sh
 tools/build_all.sh              # every RomWBW version
@@ -112,11 +115,11 @@ the published catalog is computed from the file that gets uploaded; nothing is
 transcribed.
 
 **The build is reproducible.** A clean rebuild produces all 48 artifacts
-byte-identical, and `emu_avw-v0-3.5.1.rom` hashes to
-`4b11402a29fad22de304775b7c415eb6a74600df06bd57828b9931a7e9693258` — the same
-bytes the clients have been fetching and booting. The rebuilt `w8.com` and
-`r8.com` are likewise byte-identical to the copies inside the published
-`hd1k_combo.img`.
+byte-identical: `emu_avw-v0-3.5.1.rom` hashes to
+`4b11402a29fad22de304775b7c415eb6a74600df06bd57828b9931a7e9693258`, and the
+rebuilt `w8.com` and `r8.com` are byte-identical to the copies inside the
+published `hd1k_combo.img`. So a rebuild reproduces what is already published
+before it changes anything.
 
 ### Proven by running them, not just hashing them
 
