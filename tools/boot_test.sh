@@ -10,29 +10,28 @@
 # fails when the emulator is absent - a machine that can build the artifacts
 # is not necessarily a machine that can run them.
 #
-# WHICH RELEASES AN EMULATOR CAN BOOT
+# EVERY PUBLISHED RELEASE IS TESTED, UNCONDITIONALLY
 #
-# It used to be exactly one.  romwbw_emu had a compile-time RomWBW pin
-# (src/romwbw_pin.h) and emu_validate_rom_hcb refused any ROM whose HCB
-# disagreed with it, so a given binary could boot one of the RomWBW versions
-# this repo publishes and had to refuse the rest.
+# This went through three shapes.  romwbw_emu once had a compile-time RomWBW
+# pin and refused any ROM whose HCB disagreed with it, so a binary booted one
+# published release and refused the rest.  Then it carried a compile-time LIST
+# (ROMWBW_SUPPORTED_RELEASES), and this script asked the binary which releases
+# it allowed - parsing "RomWBW releases this build can run:" off --version -
+# and held it to that answer, asserting a refusal for the rest.
 #
-# That is no longer true.  The version a guest sees is read out of the loaded
-# ROM at run time, and one binary boots any release in that header's
-# ROMWBW_SUPPORTED_RELEASES list.  So this script asks the emulator what it
-# can run and holds it to that answer - which means the interesting assertion
-# is now "one binary booted every published release", not "it refused all but
-# one".
+# romwbw_emu v1.44 deleted the list.  The emulator loads any ROM with a
+# readable HBIOS configuration block, so there is nothing to ask and nothing
+# that may legitimately be refused.  THIS SCRIPT NO LONGER PARSES --version;
+# it tests every version in versions/, and a ROM that does not boot is a
+# failure rather than a possible correct refusal.
 #
-# Both banner forms are accepted, so this repo still tests correctly against
-# an emulator built before that change:
-#
-#   RomWBW releases this build can run: 3.5.1, 3.6.0     (runtime version)
-#   RomWBW compatibility: v3.5.1 (pinned)                (compile-time pin)
+# That matters for publishing: this script is the gate that replaced the
+# compile-time list.  Publishing a release into the v0 index is the assertion
+# that it passed here (docs/INTERFACE_V0.md), so a refusal branch that turned
+# "cannot boot" into a pass would be the one thing that must not exist.
 #
 # What is asserted, per published RomWBW version:
 #
-#   If the emulator can run it
 #     1. A matching ROM plus disk boots to a CP/M prompt.
 #     2. It prints the CBIOS banner for that release and NO version-mismatch
 #        warning.
@@ -48,9 +47,10 @@
 #        exercises the private 0xE1-0xEA host block, which upstream RomWBW
 #        knows nothing about and which no upstream test covers.
 #
-#   If it cannot
-#     6. The ROM is REFUSED by name, rather than loaded into a guest that
-#        prints nothing.
+# There is no sixth assertion and no "if it cannot" case.  Until v1.44 the
+# emulator carried a compile-time release allowlist and a release it did not
+# list was expected to be REFUSED by name - a refusal was a pass.  Nothing may
+# be refused now, so a ROM that does not boot is a failure.
 #
 # Boot commands are RomWBW's: --boot=2 is the first hard disk (unit 2), slice
 # 0.  --boot=0 is not a disk at all.
@@ -82,32 +82,11 @@ else
     VERSIONS="$ALL_VERSIONS"
 fi
 
-# Which releases can this emulator run?  Ask it rather than assume.  The
-# newer banner lists them; the older one names a single compile-time pin.
-BANNER="$("$EMU" --version 2>&1)"
-RUNS="$(echo "$BANNER" |
-        sed -n 's/^RomWBW releases this build can run: \(.*\)/\1/p' |
-        head -1 | tr -d ' ' | tr ',' ' ')"
-PINNED=no
-if [ -z "$RUNS" ]; then
-    RUNS="$(echo "$BANNER" |
-            sed -n 's/.*RomWBW compatibility: v\([0-9.]*\).*/\1/p' | head -1)"
-    PINNED=yes
-fi
-[ -n "$RUNS" ] || die "cannot tell which RomWBW releases $EMU can run, from:
-$BANNER"
-
-can_run() {
-    for _r in $RUNS; do [ "$_r" = "$1" ] && return 0; done
-    return 1
-}
-
+# Nothing is asked of the binary here.  It used to be interrogated for a
+# compile-time release allowlist; there is none, and every published release
+# must boot.
 echo "emulator: $EMU"
-if [ "$PINNED" = yes ]; then
-    echo "compile-time pin: v$RUNS  (an emulator from before the runtime version)"
-else
-    echo "can run RomWBW:$(printf ' v%s' $RUNS)"
-fi
+echo "testing RomWBW:$(printf ' v%s' $VERSIONS)"
 echo
 
 WORK="$BUILD/.boot-test"
@@ -147,9 +126,10 @@ for v in $VERSIONS; do
 
     echo "=== RomWBW v$v ==="
     examined=$((examined + 1))
+    rc_before="$rc"
 
-    if can_run "$v"; then
-        out="$(run_emu "$rom" "$disk" 2)"
+    out="$(run_emu "$rom" "$disk" 2)"
+    {
         echo "$out" | grep -q "CBIOS v$v \[WBW\]" &&
             pass "boots and prints CBIOS v$v [WBW]" ||
             bad "no 'CBIOS v$v [WBW]' banner - did it boot?"
@@ -160,13 +140,9 @@ for v in $VERSIONS; do
             bad "printed a version mismatch against its OWN release" ||
             pass "no version-mismatch warning, as expected for a matched pair"
 
-        # Only a runtime-version emulator says which release it loaded; a
-        # pinned one cannot, because it never read one.
-        if [ "$PINNED" = no ]; then
-            echo "$out" | grep -q "^RomWBW v$v " &&
-                pass "the emulator reports v$v, read from the ROM" ||
-                bad "the emulator did not report v$v after loading a v$v ROM"
-        fi
+        echo "$out" | grep -q "^RomWBW v$v " &&
+            pass "the emulator reports v$v, read from the ROM" ||
+            bad "the emulator did not report v$v after loading a v$v ROM"
 
         # A disk from a different release must warn.  Find one anywhere in the
         # published set - see ALL_VERSIONS above.  Say so when there is none,
@@ -206,22 +182,16 @@ W8 SRC.TXT out.txt
             bad "R8/W8 round trip failed - see $xfer/log"
         fi
 
-        booted="$booted $v"
-    else
-        # This emulator cannot load this ROM.  The refusal IS the pass.
-        out="$(printf '\n' | timeout 20 "$EMU" --romwbw="$rom" --boot=C 2>&1 || true)"
-        if echo "$out" | grep -q "ROM is built for RomWBW v$v"; then
-            pass "ROM correctly refused (this emulator does not run v$v)"
-            pass "to boot v$v, use an emulator whose ROMWBW_SUPPORTED_RELEASES lists it"
-        else
-            bad "the emulator did not refuse a v$v ROM it cannot run - emu_validate_rom_hcb is not doing its job"
-        fi
-    fi
+        # Only count it as booted if every assertion above held.  The
+        # summary line below is the headline result, and a version whose
+        # CBIOS banner and mismatch checks both failed must not appear in it.
+        [ "$rc" -eq "$rc_before" ] && booted="$booted $v"
+    }
     echo
 done
 
 # The point of the whole exercise: how many published releases did ONE binary
-# boot?  Two or more is what the runtime version bought, and saying so here is
+# boot?  Every one of them, now that there is no allowlist - saying so here is
 # what makes a regression to a single-release binary visible.
 count=0
 for v in $booted; do count=$((count + 1)); done

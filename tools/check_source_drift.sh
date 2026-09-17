@@ -13,19 +13,24 @@
 #   src/r8.asm       identical in both, and must stay so
 #   src/w8.asm       identical in both, and must stay so
 #   src/emu_rom.asm  identical in both, and must stay so
-#   src/emu_hbios.asm  DELIBERATELY DIFFERENT - see below
+#   src/emu_hbios.asm  identical in both, and must stay so
 #
-# emu_hbios.asm is the interesting one.  romwbw_emu hardcodes `db 035h` / `db
-# 010h` at both stamp sites, because that tree is cut from one release.  This
-# repository cannot: it builds a ROM for any RomWBW release, so the same two
-# sites read RMV_VER / RMV_UPD out of a generated romwbw_ver.inc
-# (tools/build_rom.sh writes it from versions/<ver>/version.json).  The files
-# therefore MUST differ, and comparing them byte for byte would fail forever.
+# emu_hbios.asm used to be the interesting one.  romwbw_emu hardcoded
+# `db 035h` / `db 010h` at both stamp sites, because that tree was cut from one
+# release; this repository could not, because it builds a ROM for any RomWBW
+# release, so its two sites read RMV_VER / RMV_UPD out of a generated
+# romwbw_ver.inc.  The files therefore HAD to differ, and this script asserted
+# the difference was the parameterisation and nothing else.
 #
-# So the check that means something is the ARTIFACT, not the source: assembled
-# for 3.5.1 - the release romwbw_emu is pinned to - the two must produce the
-# same 512 KB ROM.  They do, and that is what proves the parameterisation is
-# the ONLY difference.  A stray edit to either copy moves that hash.
+# romwbw_emu v1.44 parameterised its copy too - its roms/build_emu_rom.sh
+# generates the same include, from the HCB of the stock ROM it overlays - so
+# there is one source now and plain equality is the check.  That is strictly
+# stronger than the three structural greps it replaced, and it immediately
+# caught a comment that had drifted where no assembled-output comparison could
+# see it.
+#
+# The artifact comparison below stays anyway: identical sources are not by
+# themselves proof of identical output.
 #
 # Usage: tools/check_source_drift.sh [romwbw_emu-root]
 #
@@ -73,29 +78,35 @@ for f in r8.asm w8.asm emu_rom.asm; do
 done
 echo
 
-# --- the one that must differ, and only in the documented way ---------------
+# --- emu_hbios.asm, which must now be IDENTICAL -----------------------------
 #
-# Assert the difference is still the parameterisation and nothing else: this
-# copy must take its version from the generated include and must NOT carry a
-# hardcoded stamp, and romwbw_emu's must be the other way round.  This is a
-# cheap structural check; the hash comparison below is the real one.
+# This used to be "the one that must differ, and only in the documented way":
+# romwbw_emu's copy hardcoded `db 035h` / `db 010h` while this one took its
+# version from the generated romwbw_ver.inc, and the checks below asserted
+# that asymmetry.  It cost romwbw_emu the ability to build a ROM for any
+# release but 3.5.1, and it let comments drift between the two copies where
+# no assembled-output comparison could see them.
+#
+# romwbw_emu parameterised its copy too, so there is one source now and the
+# check is plain equality - which is strictly stronger than the three
+# structural greps it replaces.
 
-echo "emu_hbios.asm, which differs on purpose:"
+echo "emu_hbios.asm, which must be identical in both trees:"
 a="$ROOT/src/emu_hbios.asm"
 b="$EMU_ROOT/src/emu_hbios.asm"
 if cmp -s "$a" "$b"; then
-    bad "emu_hbios.asm is now IDENTICAL to romwbw_emu's - this copy has lost its
-        romwbw_ver.inc parameterisation and can no longer build a ROM for any
-        release but the one hardcoded in it"
-else
+    pass "emu_hbios.asm is byte-identical in both trees"
     grep -q 'include[[:space:]]*romwbw_ver.inc' "$a" &&
-        pass "this copy takes its version from the generated romwbw_ver.inc" ||
-        bad "this copy no longer includes romwbw_ver.inc"
+        pass "and takes its version from the generated romwbw_ver.inc" ||
+        bad "neither copy includes romwbw_ver.inc - the version is hardcoded again"
     if grep -qE '^\s*(CB_VERSION:)?\s*db\s+0(35|10)h' "$a"; then
-        bad "this copy has a hardcoded version stamp again - it must use RMV_VER/RMV_UPD"
+        bad "a hardcoded version stamp is back - it must use RMV_VER/RMV_UPD"
     else
         pass "and carries no hardcoded version stamp"
     fi
+else
+    bad "emu_hbios.asm has drifted - diff $a $b
+        The two trees keep one source for bank 0.  Edit both or neither."
 fi
 echo
 
@@ -135,9 +146,10 @@ else
     mkdir -p "$WORKDRIFT"
 
     # romwbw_emu's copy hardcodes its version stamp, so it assembles alone.
-    # This repo's copy needs the generated include; build it for 3.5.1, which
-    # is the release romwbw_emu's ROMWBW_DEFAULT_* names and the only one its
-    # hardcoded copy can produce.
+    # Both copies need the generated include now.  3.5.1 is an arbitrary
+    # choice of release for the comparison - the sources are identical, so any
+    # release would compare equal; what this catches is a build that is not
+    # reproducible at all.
     build_bank0() {   # $1 = source dir holding emu_hbios.asm, $2 = output
         _d="$WORKDRIFT/$(basename "$2" .bin)"
         rm -rf "$_d"; mkdir -p "$_d"
