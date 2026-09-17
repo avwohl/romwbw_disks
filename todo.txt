@@ -14,6 +14,35 @@ are both built and verified, w8.com/r8.com/emu_hbios.asm/emu_rom.asm live in
 src/, and all three GUI clients were migrated on 2026-09-05.  Its last question
 is answered under [ANY] below.
 
+- [ANY] MAKE tools/boot_test.sh THE GATE, so romwbw_emu can delete its
+compile-time one.  docs/INTERFACE_V0.md already says adding RomWBW 3.7.0 needs no
+client change and no interface bump.  That is false today, and the only reason is
+ROMWBW_SUPPORTED_RELEASES in romwbw_emu/src/romwbw_pin.h - a hand-edited macro
+adjudicating the very release bytes tools/build_rom.sh writes into the HCB.
+  The replacement is publishing discipline, not another list: a release enters
+the v0 index only after boot_test.sh passes against the v0 proxy, and a release
+that cannot goes to index-v1.json beside index-v0.json on the release marked
+Latest, where v0 clients never see it.  That gate already exists in this repo, it
+already asserts the CBIOS banner, the CP/M prompt, both mismatch cases and an
+R8/W8 round trip, and unlike the macro it runs against the artifact actually
+being published.
+  Needs docs/RELEASING.md to make the run required, and docs/INTERFACE_V0.md to
+say that publishing into the v0 index IS the assertion that it passed.  Do it
+BEFORE romwbw_emu cuts the gate.  The whole argument is
+romwbw_emu/docs/RELEASE_GATE.md.
+  One gap that section must state rather than paper over: v0's pillar 3 covers
+the private 0xE1-0xEA block and two standard functions, not the full set of
+standard HBIOS functions the dispatcher implements.  A release whose CBIOS calls
+a standard function romwbw_emu lacks is not caught by v0 as written, and
+boot_test.sh is what has to catch it.
+
+- [ANY] 0x0406 in HBX_BNKCALL is a 3.5.1 constant living in bank 0, which this
+repo builds per release - it belongs in romwbw_ver.inc beside the version bytes
+tools/build_rom.sh already generates.  Not blocking the item above.  Any
+emu_hbios.asm edit moves every published ROM's sha256 and bumps every version's
+generation, which costs every user a re-download, so ride this along with the
+next bank-0 change rather than cutting it on its own.
+
 - [WINDOWS + MAC + ANDROID] NONE OF THE CLIENT MIGRATION HAS BEEN COMPILED, and
 that is the largest open item anywhere in this family.  ioscpm builds 63-65,
 cpmdroid 1.26-1.28 and z80cpmw's unreleased entry were all written on a Linux
