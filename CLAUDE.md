@@ -23,12 +23,13 @@ Latest **by default**, so cutting any release without `--latest=false` repoints
 every installed client at a release with no `index-v0.json` on it.
 
 That has already happened once, on 2026-09-10, and the URL answered 404 until
-the flag was put back. `tools/check_latest.py` exists to fail this repository if
-the URL a client really uses ever stops being the index - **but nothing runs
-it.** It is in no workflow, in no script and in no step of docs/RELEASING.md.
-Run it by hand after a re-cut, or wire it in. `tools/publish_release.sh`
-passes `--latest` when it cuts `catalog-v0` and `--latest=false` elsewhere;
-do not add a release-creating path that omits either.
+the flag was put back. `tools/check_latest.py` fails this repository if the URL a
+client really uses ever stops being the index, and since 2026-09-18
+`tools/publish_release.sh` runs it as its last step and dies on a failure - it is
+still in no CI workflow, deliberately, because what a release channel serves is
+not what CI is for. Run it by hand after any release you cut without that script.
+`publish_release.sh` passes `--latest` when it cuts `catalog-v0` and
+`--latest=false` elsewhere; do not add a release-creating path that omits either.
 
 It was `releases/download/catalog-v0/index-v0.json` until 29635dd. Clients built
 before that still ask for the tag by name, so **`catalog-v0` has to stay alive
@@ -44,32 +45,112 @@ deleted in ff6adec. Do not take another. If a pipeline here ever needs it, reach
 into a sibling checkout the way `tools/check_source_drift.sh` already reaches
 for romwbw_emu.
 
-## cpmtools IS used here, and that is deliberate
+## Do not use cpmtools
 
-`tools/build_disks.sh` injects `w8.com` and `r8.com` into the stock images with
-`cpmcp`/`cpmrm`/`cpmls`, and `tools/diskdefs` carries the `wbw_hd1k_0..5` combo
-slice definitions no distribution ships. That is the one place in the family
-cpmtools is correct to use - every *client* reads images with `cpm_disk.py`
-instead, and romwbw_emu deleted its cpmtools recipes and its `disks/diskdefs`
-for that reason.
+**No pipeline here may call `cpmcp`, `cpmrm`, `cpmls` or any other cpmtools
+program, and none may be installed to make one work.** This reverses what this
+file said until 2026-09-18, which was that cpmtools was correct here and that
+this was the one place in the family it belonged.
 
-Two hazards, both live, both the reason `build_disks.sh` checks image sizes
-against the shape its diskdef implies **before** writing anything:
+The reasons it was wrong are already written down in the paragraph that used to
+defend it:
 
 - **The wrong diskdef does not fail.** cpmtools reads a garbage directory and
-  `cpmcp` writes at the wrong offset while reporting success.
+  `cpmcp` writes at the wrong offset while reporting success. `build_disks.sh`
+  carries a size check ahead of every write purely to contain that.
 - **cpmtools 2.23 cannot be configured without libdsk**, whose backend cannot
-  address past 8 MB from the start of a file. So `wbw_hd1k_1` and up are
-  unreachable on any packaged build, and every cpmtools call here runs with
-  `tools/` as its working directory so `./diskdefs` is the file picked up.
+  address past 8 MB from the start of a file, so `wbw_hd1k_1` and up are
+  unreachable on any packaged build. The tool cannot reach most of the combo
+  image it is being asked to write.
+- It needs `tools/diskdefs`, a definitions file no distribution ships, and
+  every call has to run with `tools/` as its working directory for that file to
+  be picked up. Three things to get right before a byte is written.
 
-## Never publish a snapshot
+The reader that replaces it is **`cpmemu/util/cpm_disk.py`**, which is the only
+copy in the family and is what every *client* already uses. Reach it out of a
+sibling checkout the way `tools/check_source_drift.sh` already reaches for
+romwbw_emu. Do NOT vendor a copy here - see the section above, which is about
+exactly that mistake.
 
-`tools/fetch_romwbw.sh` refuses an upstream tag that is not a plain `vX.Y.Z` and
-refuses one GitHub marks as a prerelease. Upstream tags development snapshots
-alongside releases, and a snapshot's HCB carries the same two version bytes as
-the release it precedes - `v3.7.0-dev.13` reads `37 00`, exactly as a released
-3.7.0 would - so nothing downstream could tell them apart.
+**The tree obeys this.** `tools/build_disks.sh` was converted on 2026-09-18 and
+`tools/diskdefs` is deleted; nothing here calls cpmtools and nothing needs it
+installed. Verified by rebuilding every artifact for all three carried versions
+on a machine with no cpmtools at all.
+
+Only the injected image changed shape: `cpm_disk.py` pads the tail of a file's
+last block with `0x1A` where `cpmcp` used `0x00`, so `hd1k_combo` differs from
+its previous publication by exactly 4608 bytes, every one of them that padding.
+Directory entries and block allocation are identical.
+
+## Snapshots are carried, deliberately and never as the default
+
+This section said **"Never publish a snapshot"** until 2026-09-18. The owner
+decided otherwise, and `v3.7.0-dev.14` is carried. The reasoning that produced
+the old rule was not wrong, so none of it is deleted - it is the reason for
+every guard below.
+
+**The hazard, measured rather than argued.** A snapshot's HCB carries the same
+two version bytes as the release it precedes. `v3.7.0-dev.14`'s stock ROM reads
+`57 a8 37 00` at 0x103 - byte for byte what a released 3.7.0 will read. So
+nothing computed from those bytes can tell them apart, including
+`emu_validate_rom_hcb`, which is how every client decides a ROM is loadable.
+RomWBW's CBIOS compares major.minor only, so the mismatch warning will not fire
+between a snapshot and its release either.
+
+**What separates them is the CBIOS banner, and only that.** It is a string and
+it carries the full tag. The asymmetry is worth memorising:
+
+    ROM  (two HCB bytes)  -> emulator prints "RomWBW v3.7.0"
+    disk (CBIOS banner)   -> "CBIOS v3.7.0-dev.14 [WBW]"
+
+`tools/boot_test.sh` asserts BOTH halves, including that the ROM does *not*
+report the suffix - so if upstream ever changes the HCB, this repository finds
+out rather than assuming.
+
+**The four things that make carrying one safe:**
+
+1. **The version directory is named for the full upstream tag** -
+   `versions/3.7.0-dev.14/`, not `3.7.0`. That name flows into every asset
+   name, the release tag, and `$VER` in `build_disks.sh`'s exact-match banner
+   assertion, which is why that assertion needed no change.
+2. **`"prerelease": true` in `versions/<ver>/version.json`**, propagated by
+   `gen_catalog.py` to the index entry and the catalog. A boolean, because the
+   `status` beside it is free text that no client can safely branch on.
+3. **It is never the default.** `check_committed.py` and `verify_catalog.py`
+   each refuse `prerelease` and `default` on the same entry, independently.
+4. **`fetch_romwbw.sh` reads the manifest, not an environment variable.** A tag
+   that is not a plain `vX.Y.Z` is refused unless that version has declared
+   itself, and a version that declares itself while GitHub calls it a full
+   release is refused too. `ALLOW_PRERELEASE=1` remains only for a local build
+   of something this repo does not carry.
+
+**Clients must hide it behind an opt-in, and none does yet.** Measured
+2026-09-18: all four read this index and would list a `prerelease` entry like
+any other; the item is filed in each of their `todo.txt`. So today the entry is
+VISIBLE in every client and merely not selected. `docs/CATALOG_SCHEMA.md` §2.3.1
+is the contract they will implement against. This is why guard 3 - never the
+default - matters more than the flag: it is the one that is actually running.
+
+**RETIRE THE SNAPSHOT WHEN ITS RELEASE SHIPS.** The day upstream cuts a real
+`v3.7.0`, the index would carry two entries whose `hbios` blocks are byte-
+identical, and a client narrowing by those two bytes - the documented use, and
+what every pre-2026-09-17 binary does - matches both with no rule to choose
+between them. Nothing in the tooling detects that, because each entry is
+individually correct.
+
+So when the release lands: add `versions/3.7.0/`, delete
+`versions/3.7.0-dev.14/` and `catalog/v0/3.7.0-dev.14/`, and regenerate. The
+entry leaves the index and clients stop seeing it. The immutable
+`v0-romwbw-3.7.0-dev.14` release tag stays live, so anything already pointing
+at those assets keeps working - which is the whole reason per-version tags are
+immutable. The same applies between snapshots: carry one at a time unless there
+is a reason not to, or the index accumulates half a gigabyte of superseded
+development builds.
+
+**Do not name a version directory `3.7.0` for a snapshot.** That is the one
+move that breaks everything above at once: the banner assertion would fail, the
+asset names would collide with the real release when it ships, and the tag
+`v0-romwbw-3.7.0` would be taken by something that is not 3.7.0.
 
 ## Hashes are computed, never transcribed
 
@@ -85,11 +166,14 @@ multi-artifact re-cut as local damage.
 
 ## The Z80 sources are shared with romwbw_emu
 
-All four - `src/r8.asm`, `src/w8.asm`, `src/emu_rom.asm` and `src/emu_hbios.asm`
-- must stay byte-identical to romwbw_emu's. `emu_hbios.asm` used to be the
-exception, differing by its generated `romwbw_ver.inc` parameterisation, because
-that tree hardcoded the release it was cut from; romwbw_emu v1.44 parameterised
-its copy too, so plain equality is the check now.
+All three - `src/r8.asm`, `src/w8.asm` and `src/emu_hbios.asm` - must stay
+byte-identical to romwbw_emu's. `emu_hbios.asm` used to be the exception,
+differing by its generated `romwbw_ver.inc` parameterisation, because that tree
+hardcoded the release it was cut from; romwbw_emu v1.44 parameterised its copy
+too, so plain equality is the check now. `src/emu_rom.asm` was a fourth shared
+source until 69d2a71 deleted it from here: nothing in either repository builds
+it, it carries no `.z80` directive so it does not assemble, and romwbw_emu keeps
+the one remaining copy.
 `tools/check_source_drift.sh` is the check, and it skips when romwbw_emu is not
 beside this repo - so a green run on a machine without it has not checked.
 
@@ -117,6 +201,32 @@ Two of the three also bundle a copy as an offline floor - ioscpm's
 they are refreshed. ioscpm's `tools/check-help-assets.py` notices for the
 ioscpm/z80cpmw pair; **cpmdroid's bundled copy is covered by nothing**, so a
 rewritten topic leaves the Android offline floor stale silently.
+
+## todo.txt
+
+**Things to do, and nothing else.** Not history, not a settled decision, not a
+standing fact, not a measurement, not a paragraph explaining that an item closed.
+A closed item is DELETED. Finished work is in the commit message that finished
+it; standing rules are in this file; what was measured about the old system is in
+docs/FINDINGS.md.
+
+**One or two lines an item.** If an item needs five paragraphs to justify itself,
+the justification belongs in the document that carries the reasoning and the item
+belongs in one line pointing at it.
+
+**This repository only.** Work that would be done in `romwbw_emu`, `ioscpm`,
+`cpmdroid`, `z80cpmw` or `cpmemu` goes in THAT repository's `todo.txt`, where the
+session that can close it will read it. `romwbw_emu/todo.txt` states the
+reciprocal rule; filing across it makes a list nobody acts on. A cross-repository
+*consequence* is different from a cross-repository *task* and belongs in the doc
+that carries the contract.
+
+**It should be empty, and emptiest just after a release.** This repository
+publishes; the gap between committed and published is one asset upload wide
+(`sh tools/unreleased.sh`). If the file is longer at the end of a session than at
+the start, that session did not do its job. It had reached 196 lines of mostly
+history by 2026-09-18, when it was cut to one item - by doing the work, not by
+describing it better.
 
 ## Before claiming what is shipped
 

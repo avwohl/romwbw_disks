@@ -40,15 +40,26 @@ its own help without patching anything.
    `description` and `filename`. Nothing else needs editing — `size` and
    `sha256` are **measured** by `tools/gen_catalog.py`, so they cannot be
    authored wrong, and `base_url` is built from `HELP_TAG` there.
-2. Regenerate `index-v0.json` and re-cut this tag with the seven `.md` files as
-   its assets. `topics.json` is source, not an asset: the index is the published
-   form of what it says.
-3. **Publish the index in the same round.** The sizes and hashes in it describe
+2. Regenerate the index and re-cut this tag with the seven `.md` files as its
+   assets. `topics.json` is source, not an asset: the index is the published form
+   of what it says. `tools/gen_catalog.py --help-block` updates the committed
+   `catalog/v0/index.json` from `help/` alone and needs no build, which is what
+   `tools/check_committed.py` tells you to run when it catches a topic edited
+   without it; the published `index-v0.json` still comes from a full
+   `gen_catalog.py --index` at publish time.
+3. **Replace each asset with `delete-asset` plus a plain upload, and read the
+   stored bytes back.** Not `--clobber`: on 2026-09-10, publishing rewritten
+   topics, a `--clobber` reported success, moved the asset's `updated_at` and
+   went on serving the old file. `gh release view help-v0 --json assets` reports
+   a `digest` per asset; each must equal the sha256 of the file you uploaded.
+   `tools/publish_release.sh` does this for `index-v0.json` and for every
+   per-version asset, but nothing scripts this tag, so it is on you.
+4. **Publish the index in the same round.** The sizes and hashes in it describe
    the files you just changed; a client checks a downloaded topic against them
    and falls back to its own copy when they disagree, so a re-cut tag with a
    stale index means every reader silently reads the version compiled into their
    app.
-4. **Keep the Latest flag where it belongs.** This is a mutable tag and it must
+5. **Keep the Latest flag where it belongs.** This is a mutable tag and it must
    not be published as Latest: `releases/latest/download/index-v0.json` is the
    entry point every client compiles in. Cutting `help-v0` as Latest on
    2026-09-10 answered 404 there for every client in the world until the flag was

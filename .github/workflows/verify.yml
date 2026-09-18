@@ -97,7 +97,7 @@ jobs:
       - name: Build everything and verify
         run: sh tools/build_all.sh
 
-      # Same clone as quick, and the same check: all four sources byte-identical
+      # Same clone as quick, and the same check: all three sources byte-identical
       # (emu_hbios.asm included, since romwbw_emu v1.44 parameterised its copy),
       # both trees' emu_hbios.asm assembled to the same 32 KB bank 0, and
       # r8.com/w8.com built from romwbw_emu's sources.

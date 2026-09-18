@@ -21,7 +21,7 @@ set -eu
 
 VER="${1:?usage: build_disks.sh <romwbw-version>}"
 [ -f "$ROOT/versions/$VER/disks.json" ] || die "unknown RomWBW version: $VER"
-need_tools cpmcp cpmrm cpmls
+need_tools "$PYTHON"
 
 TAG="$(release_tag "$VER")"
 OUT="$BUILD/$TAG"
@@ -31,11 +31,39 @@ DISKJSON="$ROOT/versions/$VER/disks.json"
 
 [ -f "$UTILS/w8.com" ] || die "build/utils/w8.com missing - run tools/build_utils.sh first"
 
-# cpmtools reads ./diskdefs if there is one and the system file otherwise, and
-# no distribution's system file carries the combo slice definitions.  So every
-# cpmtools call runs from tools/, which is where ours lives.  Image paths are
-# absolute, leaving the working directory free for this.
-cpmtool() { ( cd "$ROOT/tools" && "$@" ); }
+# THE READER IS cpmemu's cpm_disk.py, and there is no cpmtools here any more.
+# CLAUDE.md has the reasons; the two that decided it are that a wrong diskdef
+# does not fail - cpmcp writes at the wrong offset and reports success - and
+# that packaged cpmtools 2.23 cannot address past 8 MB from the start of a
+# file, so slices 1-5 of a combo image are out of its reach entirely.
+#
+# It is reached out of a sibling checkout rather than vendored: cpmemu's is the
+# only copy in the family, this repository deleted its own in ff6adec, and
+# tools/check_source_drift.sh already reaches sideways the same way.
+CPMEMU="${CPMEMU:-$ROOT/../cpmemu}"
+CPM_DISK="$CPMEMU/util/cpm_disk.py"
+[ -f "$CPM_DISK" ] || die "cpm_disk.py not found at $CPM_DISK
+       It lives in cpmemu, the only copy in the family - do not vendor one here.
+       Clone it beside this repository, or set CPMEMU=<path-to-cpmemu>."
+
+# A diskdef name from disks.json becomes cpm_disk.py's format flags.  Only two
+# are in use: a plain 8MB hd1k image, and slice N of a combo.
+cpm_fmt() {
+    case "$1" in
+        wbw_hd1k)    echo "" ;;
+        wbw_hd1k_*)  echo "--combo --slice ${1##*_}" ;;
+        *)           die "no cpm_disk.py format for diskdef '$1'" ;;
+    esac
+}
+
+# One file on one slice: is it in the directory?
+cpm_has() {
+    # $1 image, $2 diskdef, $3 filename (lowercase, e.g. w8.com)
+    _up="$(printf '%s' "$3" | tr '[:lower:]' '[:upper:]')"
+    # shellcheck disable=SC2046
+    "$PYTHON" "$CPM_DISK" list $(cpm_fmt "$2") "$1" 2>/dev/null |
+        awk '{print $2}' | grep -qx "$_up"
+}
 
 mkdir -p "$OUT"
 # Clear this builder's OWN output, and only its own: build_rom.sh and
@@ -68,9 +96,11 @@ while IFS='	' read -r id upstream def slices; do
     cp "$src" "$img"
     chmod u+w "$img"
 
-    # A wrong diskdef does not fail loudly - cpmtools reads a garbage directory
-    # and cpmcp writes at the wrong offset while reporting success - so the
-    # shape is checked against the def before anything is written.
+    # The shape is checked against the def before anything is written.  This
+    # was here because cpmtools would read a garbage directory and write at the
+    # wrong offset while reporting success; cpm_disk.py raises instead, but a
+    # size that does not match the declared shape still means the manifest and
+    # the image disagree, which is worth catching before either is trusted.
     size="$(filesize "$img")"
     case "$def" in
         wbw_hd1k)
@@ -90,21 +120,26 @@ while IFS='	' read -r id upstream def slices; do
         for sl in $(echo "$slices" | tr ',' ' '); do
             slice_ok=1
             for util in w8 r8; do
-                # cpmcp refuses to overwrite, so any existing copy goes first.
-                if cpmtool cpmls -f "$sl" "$img" 2>/dev/null | grep -qi "^$util\.com$"; then
-                    cpmtool cpmrm -f "$sl" "$img" "0:$util.com" 2>/dev/null || true
+                # An existing copy goes first, so a rebuild over a previous
+                # image cannot end up with two directory entries for one file.
+                if cpm_has "$img" "$sl" "$util.com"; then
+                    # shellcheck disable=SC2046
+                    "$PYTHON" "$CPM_DISK" delete $(cpm_fmt "$sl") "$img" \
+                        "$(printf '%s' "$util" | tr '[:lower:]' '[:upper:]').COM" \
+                        >/dev/null 2>&1 || true
                 fi
-                if ! cpmtool cpmcp -f "$sl" "$img" "$UTILS/$util.com" "0:$util.com" 2>/dev/null; then
+                # shellcheck disable=SC2046
+                if ! "$PYTHON" "$CPM_DISK" add $(cpm_fmt "$sl") "$img" \
+                        "$UTILS/$util.com" >/dev/null 2>&1; then
                     echo "FAIL  $id: could not install $util.com on slice $sl" >&2
                     broken=1; slice_ok=0; continue
                 fi
-                # cpmrm exits 0 having removed nothing on an image it cannot
-                # write, and cpmcp is then the one that complains.  Ask the
-                # directory, not the exit code.
-                if cpmtool cpmls -f "$sl" "$img" 2>/dev/null | grep -qi "^$util\.com$"; then
+                # Ask the directory, not the exit code - the same rule that
+                # applied to cpmtools, and a cheap one to keep.
+                if cpm_has "$img" "$sl" "$util.com"; then
                     injected=$((injected + 1))
                 else
-                    echo "FAIL  $id: $util.com is not on slice $sl after cpmcp" >&2
+                    echo "FAIL  $id: $util.com is not on slice $sl after the add" >&2
                     broken=1; slice_ok=0
                 fi
             done

@@ -8,11 +8,16 @@ The last piece landed on 2026-09-17: `romwbw_emu` v1.44 deleted the release
 allowlist the migration had been written around, and all three clients deleted
 the per-entry filter that consumed it.
 
-**None of it has been compiled.** The migration was written on a Linux machine
-with no Xcode, no Android SDK or NDK, and no MSVC or Windows. What could be
-checked without those is recorded in each client's own changelog, tier by tier;
-what remains is in each client's `MANUAL_CHECKS.md`. Nothing here has run on a
-phone, a tablet or a PC, and no store build exists.
+**What has been compiled is not a fact this repository can hold.** The migration
+was written on a Linux machine with no Xcode, no Android SDK or NDK, and no MSVC,
+so every client's first tier of checking was "does it type-check", recorded in
+that client's own changelog. Each client has moved since, at its own pace and on
+its own machines. Ask the client, not this document: its `CHANGELOG.md` says what
+reached a compiler and its `MANUAL_CHECKS.md` says what still needs a person
+driving the app. A sentence here naming what any of them has built would be wrong
+within a week — this one said "none of it has been compiled, and no store build
+exists" long after that had stopped being true, and what a store actually serves
+is the one thing no tree in this family can measure.
 
 Read [INTERFACE_V0.md](INTERFACE_V0.md) first for what the contract promises,
 and [CATALOG_SCHEMA.md](CATALOG_SCHEMA.md) for the documents themselves.
@@ -282,12 +287,12 @@ client.
     and half its job: since v1.44 it checks the HCB marker, `CB_PLATFORM` and
     the ROM-to-disk-image pairing, and no longer checks a release against a
     list.
-- `src/w8.asm`, `src/r8.asm`, `src/emu_hbios.asm` and `src/emu_rom.asm` now
-  live in this repo. Removing them there breaks
-  `disks/rebuild_disk_utils.sh:62-66`, `disks/verify_disk_utils.sh`,
-  `roms/build_from_source.sh` and `make -C src test` (whose `test` target runs
-  `verify_disk_utils.sh` at `src/makefile:191`); those either point here or go
-  away.
+- `src/w8.asm`, `src/r8.asm` and `src/emu_hbios.asm` now live in this repo
+  (`src/emu_rom.asm` did too until 69d2a71 deleted it as a duplicate nothing
+  builds). Removing them there would break `disks/verify_disk_utils.sh` and the
+  `make -C src test` target that runs it (`src/makefile:202`); the other
+  consumers this once listed, `disks/rebuild_disk_utils.sh` and
+  `roms/build_from_source.sh`, went with the tracked artifacts in `ed289ee`.
 - `disks/disks.xml` is a dead third catalog — `version="6"`, 21 entries, zero
   `<sha256>` elements, read by nothing in that tree, diverged from the
   published one in version, count and schema. **Deleted 2026-09-05.**
@@ -365,12 +370,13 @@ for the family, and no client needs an assembler.
 6. **Cleanup:** ~~the cpmdroid hot-patch~~, ~~`verify-disk-assets.sh`~~,
    ~~`romwbw_emu/disks/disks.xml`~~ and ~~the dev snapshot~~ — all deleted
    2026-09-05. **Not the duplicated Z80 sources**: listing them here was wrong.
-   `romwbw_emu` still builds and verifies its own ROM and its own two tracked
-   disk images from `r8.asm`, `w8.asm`, `emu_hbios.asm` and `emu_rom.asm`, so
-   they have live consumers in `disks/rebuild_disk_utils.sh`,
-   `disks/verify_disk_utils.sh`, `roms/build_from_source.sh` and `make -C src
-   test`. Removing them would be a decision to make that repo a consumer of what
-   this one publishes, and it needs a replacement for all of that first.
+   `romwbw_emu` kept `r8.asm`, `w8.asm` and `emu_hbios.asm` because it built and
+   verified its own ROM and its own two tracked disk images from them. It no
+   longer tracks either: `ed289ee` deleted them and it fetches both from this
+   catalog, which is the decision this bullet said would have to be made first,
+   made. The surviving consumer is `disks/verify_disk_utils.sh`, run by
+   `make -C src test` (`src/makefile:202`); `disks/rebuild_disk_utils.sh` and
+   `roms/build_from_source.sh` went with the artifacts.
 
 Steps 3, 4 and 5 were written as separate numbered releases inside each client
 even though they were written together, because the ordering is the safety
@@ -378,8 +384,8 @@ argument: the rename runs before anything can fetch a catalog, so a device that
 arrives at the later build without ever running the earlier one still renames
 its files before a v0 name can land beside a pre-v0 one.
 
-**What is left is not writing but running.** No store build of any client
-exists and none of this has been compiled. 3.6.0 was promoted to
+**What is left is not writing but running** — how much of it, per client, is in
+that client's own changelog and `MANUAL_CHECKS.md`, not here. 3.6.0 was promoted to
 `"status": "stable"` on 2026-09-05 without waiting for one, because a shipped
 client filtered it out by `hbios.ver_byte` rather than by reading `status` —
 the bytes were the safety mechanism, not the label. A client rebuilt today no

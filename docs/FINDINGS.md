@@ -575,7 +575,7 @@ an image it downloaded - a fresh download must match the catalog. And the
 alternate must not survive a re-download: once a device fetches the canonical
 combo, the exception has no further use on that device.
 
-## 11. The HBIOS dispatcher diff, and two things this document got wrong
+## 11. The HBIOS dispatcher passes, and two things this document got wrong
 
 Done 2026-09-05, against RomWBW 3.6.0's `Source/HBIOS/` (extracted from the
 published `Package.zip`, which ships `Source/` even though the build only unpacks
@@ -624,9 +624,28 @@ stated confidently:
   It was cited here as the headline example of a semantic change; it is an
   example of why a comment diff is not evidence.
 
-**What is still not done.** This pass covered the boot path, the device
-inventory, every function the dispatcher implements, and 3.6.0's new surface. It
-did not read all 268 KB of `hbios.asm`.
+**A second pass, and where the bugs actually were.** The pass above compared
+3.6.0 against 3.5.1, which is the wrong axis: nothing changed between them. So a
+second pass checked all 82 functions the dispatcher implements against RomWBW's
+own handlers rather than against the previous release, and that is where the
+faults were, because five of the first six had been "implemented but wrong" all
+along. It produced 74 findings. Roughly thirty are fixed across `romwbw_emu`
+68d02ac..aceaa84: a guest-visible console hang (`BF_CIOIST` returning `$FF`,
+which reads as a negative error, so `HTALK.COM` spun for ever), swapped
+memory-disk geometry, a heap that grew on every OS boot, no periodic timer at all
+(`TIMER.COM` frozen, `VGMPLAY.COM` hung), slice bounds checked against the wrong
+end of the wrong thing, six SYS subfunctions answering in the wrong register, all
+three SND setters reading the wrong register, and unhandled VDA/SND/RTC functions
+reporting SUCCESS with the caller's own registers.
+
+The remaining forty-odd are low severity - contract tidying rather than defects a
+user meets - and **they are recorded nowhere.** They went with the session
+transcript, so re-running the pass is the only way to get them back. That is
+`romwbw_emu`'s work, as the fixes were, and it is filed in `romwbw_emu/todo.txt`.
+
+**What is still not done.** Between them the two passes covered the boot path,
+the device inventory, every function the dispatcher implements, and 3.6.0's new
+surface. They did not read all 268 KB of `hbios.asm`.
 
 ## 12. Open questions this repository does not answer
 
@@ -702,16 +721,16 @@ neither `v0` nor `3.5.1`. **It goes blind the moment any client migrates** —
 not loudly, not with an error, just silently passing. Nothing here replaces it,
 and something should.
 
-**Should `romwbw_emu/disks/hd1k_infocom.img` be published?** It is tracked in
-that repository (8,388,608 bytes, sha256 `75a8a618…`) and these exact bytes
-have never appeared in any release, in any repository. An asset *named*
+**~~Should `romwbw_emu/disks/hd1k_infocom.img` be published?~~ Moot: the file
+is gone.** It was tracked in that repository (8,388,608 bytes, sha256
+`75a8a618…`) and those exact bytes never appeared in any release, in any
+repository; `romwbw_emu` deleted it in `ed289ee` and now tracks no disk image at
+all, fetching them from this catalog instead. An asset *named*
 `hd1k_infocom.img` did ship in ioscpm `v1.1`, `v1.2`, `v1.4.0` and `v1.4.3` —
-same 8,388,608 bytes but a different image, sha256 `7f33738c…` — and was
-dropped from `v1.4.5` onward. Meanwhile upstream RomWBW v3.6.0 ships its own
-`hd1k_infocom.img`, which this repository does publish as
-`hd1k_infocom-v0-3.6.0.img`. Whether the hand-built 3.5.1-era one should now be
-published alongside it, retired, or compared against upstream's first, is
-undecided.
+same 8,388,608 bytes but a different image, sha256 `7f33738c…` — and was dropped
+from `v1.4.5` onward. Upstream RomWBW v3.6.0 ships its own `hd1k_infocom.img`,
+which this repository publishes as `hd1k_infocom-v0-3.6.0.img`. That is the one
+that exists now.
 
 **~~Has anyone diffed v3.6.0's HBIOS against the functions the emulator core
 actually implements?~~ DONE 2026-09-05 — see section 11.** No function changed
@@ -730,5 +749,5 @@ deleted; nothing in this repository changed behaviour, because nothing used it.
 
 What made the duplication cost something rather than merely being untidy: the
 two files were byte-identical, `check_source_drift.sh` does not compare them —
-it covers `r8.asm`, `w8.asm` and `emu_rom.asm` — and `cpmemu` has since fixed a
+it covers `r8.asm`, `w8.asm` and `emu_hbios.asm` — and `cpmemu` has since fixed a
 silent data bug in the combo path that this copy would have kept.

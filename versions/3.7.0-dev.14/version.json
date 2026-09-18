@@ -1,0 +1,24 @@
+{
+  "romwbw_version": "3.7.0-dev.14",
+  "released": "2026-09-08",
+  "status": "snapshot",
+  "default": false,
+  "prerelease": true,
+  "hbios": {
+    "major": 3,
+    "minor": 7,
+    "update": 0,
+    "patch": 0,
+    "ver_byte": "0x37",
+    "upd_byte": "0x00",
+    "sysver_de": "0x3700"
+  },
+  "upstream": {
+    "tag": "v3.7.0-dev.14",
+    "package_url": "https://github.com/wwarthen/RomWBW/releases/download/v3.7.0-dev.14/RomWBW-v3.7.0-dev.14-Package.zip",
+    "unpacked_dir": "RomWBW-v3.7.0-dev.14",
+    "stock_rom": "Binary/SBC_simh_std.rom",
+    "images_dir": "Binary",
+    "package_sha256": "953cc163ff630eead716b47b4f6b3a451bfee0ceb4d0f98fdeff3674465e9ad5"
+  }
+}

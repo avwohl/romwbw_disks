@@ -47,7 +47,9 @@ def sha256(path):
     return h.hexdigest()
 
 
-# hd1k disk parameters, from the wbw_hd1k diskdef in tools/diskdefs:
+# hd1k disk parameters. These came from the wbw_hd1k diskdef in tools/diskdefs,
+# deleted 2026-09-18 with the last cpmtools caller; the values are RomWBW's and
+# are restated here rather than read from anywhere:
 #   seclen 512, sectrk 16, tracks 1024, blocksize 4096, maxdir 1024, boottrk 2
 # DSM works out above 255, so block pointers are 16-bit (8 per entry), and
 # EXM is 1, so one directory entry covers two logical extents (256 records).
@@ -279,6 +281,55 @@ def directory_names(data, base):
     return names
 
 
+def verify_help(idx, build_dir):
+    """The index's `help` block, re-derived from the topic files themselves.
+
+    The topics are published on their own tag, so they sit under no release_tag
+    directory and nothing here looked for them: until 2026-09-18 the seven sizes
+    and sha256s in the `help` block were the only claims in the whole interface
+    that nothing re-derived, which is the one thing this repository is for.
+
+    Two places are searched, in order. `<dir>/<help-tag>/` is where a DOWNLOADED
+    set of help assets belongs - the same shape this function already expects for
+    a catalog, `<dir>/<release_tag>/`. Failing that, the checkout's own `help/`.
+    Which one answered is printed either way, because "verified" against a file
+    the release does not serve is worth nothing.
+    """
+    help_block = idx.get("help")
+    if not help_block:
+        fail("the index carries no help block")
+        return
+    topics = help_block.get("topics") or []
+    if not topics:
+        fail("the index's help block lists no topics")
+        return
+    tag = help_block.get("base_url", "").rstrip("/").rsplit("/", 1)[-1]
+    served = os.path.join(build_dir, tag)
+    checkout = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "help")
+    for t in topics:
+        fn = t["filename"]
+        src = None
+        for cand in (os.path.join(served, fn), os.path.join(checkout, fn)):
+            if os.path.exists(cand):
+                src = cand
+                break
+        if src is None:
+            fail("help topic %s is named by the index and is in neither %s nor %s"
+                 % (fn, served, checkout))
+            continue
+        size = os.path.getsize(src)
+        if size != t["size"]:
+            fail("help topic %s is %d bytes, the index says %d" % (fn, size, t["size"]))
+            continue
+        got = sha256(src)
+        if got != t["sha256"]:
+            fail("help topic %s hashes %s, the index says %s" % (fn, got[:16], t["sha256"][:16]))
+            continue
+        where = "served" if src.startswith(served + os.sep) else "checkout"
+        ok("help %-24s %6d bytes  sha256 ok  (%s)" % (fn, size, where))
+
+
 def verify_index(idx_path, build_dir):
     del _fails[:]
     idx = json.load(open(idx_path))
@@ -287,6 +338,19 @@ def verify_index(idx_path, build_dir):
     defaults = [e for e in idx["romwbw_versions"] if e.get("default")]
     if len(defaults) != 1:
         fail("index names %d default RomWBW versions, expected exactly 1" % len(defaults))
+    # Re-derived here as well as in check_committed.py, on purpose: this script
+    # is the one that runs against DOWNLOADED assets, so it is what would catch
+    # a published index that marks a snapshot default.
+    for e in idx["romwbw_versions"]:
+        if e.get("prerelease") and e.get("default"):
+            fail("%s is marked prerelease AND default - a development snapshot "
+                 "must never be what a client picks on its own"
+                 % e["romwbw_version"])
+    pre = [e["romwbw_version"] for e in idx["romwbw_versions"] if e.get("prerelease")]
+    if pre:
+        print("  note  %d prerelease entr%s - NO SHIPPED CLIENT HIDES THESE "
+              "YET, so what keeps them out of a user's way is default:false: %s"
+              % (len(pre), "y" if len(pre) == 1 else "ies", ", ".join(pre)))
     for e in idx["romwbw_versions"]:
         cp = os.path.join(build_dir, e["release_tag"],
                           os.path.basename(e["catalog_url"]))
@@ -331,6 +395,7 @@ def verify_index(idx_path, build_dir):
         ok("%s -> %s  generation %d  %d roms  %d disks"
            % (e["romwbw_version"], os.path.basename(cp), e["generation"],
               e["rom_count"], e["disk_count"]))
+    verify_help(idx, build_dir)
     return not _fails
 
 

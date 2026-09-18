@@ -71,6 +71,7 @@
       "label": "RomWBW 3.5.1",
       "status": "stable",
       "default": false,
+      "prerelease": false,
       "released": "2025-05-21",
       "hbios": {
         "major": 3,
@@ -83,9 +84,9 @@
       },
       "release_tag": "v0-romwbw-3.5.1",
       "catalog_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.5.1/catalog-v0-3.5.1.json",
-      "catalog_sha256": "942803d1ed67bcd8c6e0a9b730f9a08775618535b8e9affc58c56830839a78fd",
-      "catalog_size": 11826,
-      "generation": 2,
+      "catalog_sha256": "7bb3f6c64c03dca93cb201b194a7aff9190cb94b881fc2e7179b858785cffb05",
+      "catalog_size": 11849,
+      "generation": 3,
       "disks_xml_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.5.1/disks-v0-3.5.1.xml",
       "rom_count": 2,
       "disk_count": 20,
@@ -99,6 +100,7 @@
       "label": "RomWBW 3.6.0",
       "status": "stable",
       "default": true,
+      "prerelease": false,
       "released": "2026-03-28",
       "hbios": {
         "major": 3,
@@ -111,9 +113,9 @@
       },
       "release_tag": "v0-romwbw-3.6.0",
       "catalog_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.6.0/catalog-v0-3.6.0.json",
-      "catalog_sha256": "4b4de2967482ab3f218df0ca065a9bdb9998b895792b720b2be3cddc3a6edbb1",
-      "catalog_size": 15062,
-      "generation": 2,
+      "catalog_sha256": "a3c4734ead1aa6b20f75413b1d19b33f724ea5a1a98d3eb8a0d3d9bc1d089ae6",
+      "catalog_size": 15085,
+      "generation": 3,
       "disks_xml_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.6.0/disks-v0-3.6.0.xml",
       "rom_count": 2,
       "disk_count": 24,
@@ -123,6 +125,32 @@
         "NVRAM checksums do not validate across a version change: RomWBW's NVSW_CHECKSUM XORs the version bytes into the seed, so a blob saved under 3.5.1 silently resets under a 3.6.0 ROM. Clients must namespace their NVRAM store per RomWBW version.",
         "Do NOT build from a v3.6.0-dev snapshot. romwbw_emu's archive/romwbw-v3.6.0/SBC_simh_std_v360.rom was deleted 2026-09-05 for this reason: it is a v3.6.0-dev.46 snapshot from 2025-12-12, not the release, and its HCB reads 36 00 so a version check cannot tell the difference."
       ]
+    },
+    {
+      "romwbw_version": "3.7.0-dev.14",
+      "label": "RomWBW 3.7.0-dev.14 (development snapshot)",
+      "status": "snapshot",
+      "default": false,
+      "prerelease": true,
+      "released": "2026-09-08",
+      "hbios": {
+        "major": 3,
+        "minor": 7,
+        "update": 0,
+        "patch": 0,
+        "ver_byte": "0x37",
+        "upd_byte": "0x00",
+        "sysver_de": "0x3700"
+      },
+      "release_tag": "v0-romwbw-3.7.0-dev.14",
+      "catalog_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.7.0-dev.14/catalog-v0-3.7.0-dev.14.json",
+      "catalog_sha256": "b2961bdcb6d40c5a5d9290523dce58c32f0196a008146ea7a50d676bb4295e29",
+      "catalog_size": 13262,
+      "generation": 1,
+      "disks_xml_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.7.0-dev.14/disks-v0-3.7.0-dev.14.xml",
+      "rom_count": 2,
+      "disk_count": 22,
+      "notes": []
     }
   ]
 }

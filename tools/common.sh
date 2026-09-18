@@ -20,6 +20,11 @@ DLDIR="$ROMWBW_CACHE/.romwbw-dl"
 UM80="${UM80:-um80}"
 UL80="${UL80:-ul80}"
 
+# Every python in this repo goes through one name, so a machine whose `python3`
+# is not the one you meant is fixed in one place.  The scripts here need
+# nothing newer than 3.9, which is what macOS ships at /usr/bin/python3.
+PYTHON="${PYTHON:-python3}"
+
 die() { echo "FATAL: $*" >&2; exit 1; }
 note() { echo "  $*"; }
 
@@ -49,7 +54,10 @@ need_tools() {
     for t in "$@"; do
         command -v "$t" >/dev/null 2>&1 || die "$t is not on PATH
        um80/ul80: pip install um80
-       cpmcp/cpmrm/cpmls: cpmtools (brew install cpmtools / apt install cpmtools)"
+       python3: any 3.9 or newer
+       NOTE: cpmtools is NOT a dependency of this repository and must not
+       become one - see CLAUDE.md. Disk images are read and written with
+       cpmemu/util/cpm_disk.py, reached out of a sibling checkout."
     done
 }
 

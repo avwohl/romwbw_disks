@@ -177,26 +177,37 @@ Binaries built before 2026-09-17 filter the index by release and see only the
 version they were built for; that is a property of those builds, not of the
 catalog, and rebuilding is the whole of the fix.
 
-RomWBW 3.6.0 has been booted from the images published here.
-`tools/boot_test.sh` asserts the CP/M 2.2 boot, the `CBIOS [WBW]` banner, the
-prompt, the release the emulator reports back from the ROM, a mismatched pair
-warning in both directions, and the `R8`/`W8` round trip. Checked once by hand
-on 2026-09-05 and re-run by no script: banked CP/M 3, ZPM3, Z3PLUS, ZSDOS and
-NZCOM all boot, and the boot loader prints `NV Switches Found`, so the NVRAM
-checksum seed agrees with the ROM's own SYSCONF.
+Every release published here is booted by `tools/boot_test.sh`, and since
+2026-09-18 that means all six operating systems on the images rather than the
+CP/M 2.2 path alone. Per release it asserts the `CBIOS v<ver> [WBW]` banner, the
+CP/M prompt, the release the emulator reports back from the ROM, a mismatched
+pair warning in both directions, the `R8`/`W8` round trip, and then: ZSDOS,
+NZCOM, banked CP/M 3, ZPM3 and Z3PLUS each boot and print what only they print.
+CP/M 3's banner reads `CP/M v3.0 [BANKED] for HBIOS v<ver>`, so that one
+assertion covers the banked path and the ROM-to-image pairing together. NZCOM is
+checked by behaviour rather than by a banner - its slice's volume label differs
+between releases, so the test asks the booted system for `PATH` and requires
+ZCPR3's `No File` rather than the stock CCP's `PATH?`. The loader's
+`NV Switches Found` is asserted too: that is the NVRAM checksum seed agreeing
+with the ROM's own SYSCONF. Those five were checked once by hand on 2026-09-05
+and by nothing between then and now.
 
-What this does **not** close is the source-level question. Nobody has read
-3.6.0's `Source/HBIOS/hbios.asm` against the functions the emulator's dispatcher
-implements, and booting six operating systems exercises much of that surface
-without enumerating it. "Supports 3.6.0" means the release has been run, not
-that the dispatcher has been audited against it —
-[docs/FINDINGS.md](docs/FINDINGS.md) keeps that item open.
+The source-level question is no longer open in the way that sentence used to
+say. 3.6.0's `Source/HBIOS/hbios.asm` *has* been read against the functions the
+emulator's dispatcher implements — 2026-09-05, and a second pass checked all 82
+implemented functions against RomWBW's own handlers; both are recorded in
+[docs/FINDINGS.md](docs/FINDINGS.md) section 11. No function changed contract
+between 3.5.1 and 3.6.0; what the read found was a dispatcher answering six
+questions wrongly all along, five of which 3.6.0 newly made reachable — the
+sixth, `BF_CIOQUERY`, was reachable on 3.5.1 too, through `MODE.COM` on the
+published images. All are fixed in `romwbw_emu`. What is still unread is the rest
+of that 268 KB file, which is `romwbw_emu`'s to read, as the fixes were.
 
 ## Layout
 
 ```
 src/        Z80 sources: w8.asm, r8.asm, emu_hbios.asm
-tools/      the build and verify pipeline, plus diskdefs
+tools/      the build and verify pipeline
 versions/   one directory per RomWBW release: version, roms, disks, generation
 catalog/    the generated catalogs, committed so changes show up in a diff
 help/       the in-app help topics, published on the help-v0 tag

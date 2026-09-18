@@ -3,6 +3,7 @@
 
 Usage: gen_catalog.py <romwbw-version> [...]
        gen_catalog.py --index            (regenerate only the top-level index)
+       gen_catalog.py --help-block       (only the index's help block, no build)
 
 Every size and every sha256 in the published catalog is computed here, from
 the file that will actually be uploaded.  Nothing is transcribed.  The catalog
@@ -45,8 +46,9 @@ INDEX_TAG = "catalog-%s" % IFACE
 DL = "https://github.com/%s/releases/download" % REPO
 
 # The tag carrying the in-app help topics, mutable for the same reason and with
-# the same justification: eight small text files that nothing caches against a
-# version.  It is named HERE and nowhere in any client, which is the point - the
+# the same justification: seven small text files that nothing caches against a
+# version.  (It was eight while a separate help_index.json was published; see
+# build_help().)  It is named HERE and nowhere in any client, which is the point - the
 # index tells a client where the help is, so this tag can be renamed, re-cut or
 # moved to another host without a release of the Windows, Android, iOS or Linux
 # client.  A URL compiled into a client would have made that impossible for the
@@ -106,8 +108,8 @@ def content_digest(rom_entries, disk_entries):
     sorted(), not sort_keys=. sort_keys only orders DICT keys, and this payload
     is a list of lists - so without the explicit sort, merely reordering
     entries in versions/<ver>/disks.json changed the digest and bumped the
-    generation, which on iOS deletes every downloaded image. Reordering a
-    manifest must be a no-op.
+    generation - which iOS then took as an instruction to delete every
+    downloaded image. Reordering a manifest must be a no-op.
     """
     payload = json.dumps(sorted(
         [[e["filename"], e["sha256"]] for e in rom_entries]
@@ -118,21 +120,22 @@ def content_digest(rom_entries, disk_entries):
 def catalog_generation(ver, disk_entries, rom_entries):
     """A monotonic integer that changes only when the artifacts change.
 
-    iOS compares this against a stored value and DELETES downloaded images when
-    it differs (checkCatalogVersionAndInvalidate).  So it must not move when
-    nothing moved - a hand-incremented number does, and a hash of the content
-    is not monotonic.  Both properties are needed, so: hash the content, and
-    bump a stored counter only when the hash changes.
+    A client compares it against a stored value to decide whether to re-fetch
+    the catalog.  It must not move when nothing moved - a hand-incremented
+    number does, and a hash of the content is not monotonic.  Both properties
+    are needed, so: hash the content, and bump a stored counter only when the
+    hash changes.  iOS once DELETED downloaded images on a bump
+    (checkCatalogVersionAndInvalidate, gone since build 66); no client tree
+    deleted anything on one when all three were read on 2026-09-18, and the
+    per-asset sha256 is the freshness trigger.  The requirement outlives the
+    behaviour: a counter nothing can trust is a counter no client can ever act
+    on.
 
-    The counter is per RomWBW version.  Switching between RomWBW versions is
-    not a catalog bump; without that separation a user toggling
-    3.5.1 -> 3.6.0 -> 3.5.1 would have their library deleted twice.
+    The counter is per RomWBW version.  Switching between RomWBW versions is not
+    a catalog bump; without that separation a user toggling
+    3.5.1 -> 3.6.0 -> 3.5.1 saw three, which is what cost an iOS user their
+    library twice over.
     """
-    # sorted(), not sort_keys=. sort_keys only orders DICT keys, and this
-    # payload is a list of lists - so without the explicit sort, merely
-    # reordering entries in versions/<ver>/disks.json changed the digest and
-    # bumped the generation, which on iOS deletes every downloaded image.
-    # Reordering a manifest must be a no-op.
     digest = content_digest(rom_entries, disk_entries)
 
     path = os.path.join(ROOT, "versions", ver, "generation.json")
@@ -164,8 +167,9 @@ def catalog_generation(ver, disk_entries, rom_entries):
     if digest == floor_digest:
         # The artifacts are what the committed catalog already describes, so
         # this is a lost or stale generation.json, not a content change. Adopt
-        # the published number rather than inventing a new one - a spurious
-        # bump deletes every user's downloaded images.
+        # the published number rather than inventing a new one: a spurious bump
+        # is what once cost every iOS user their downloaded images, and it still
+        # costs every client a re-download it did not need.
         nxt = max(current, floor)
     else:
         nxt = max(current, floor) + 1
@@ -174,8 +178,8 @@ def catalog_generation(ver, disk_entries, rom_entries):
         "content_sha256": digest,
         "_comment": "Written by tools/gen_catalog.py. The generation only "
                     "advances when content_sha256 changes, and never "
-                    "decreases; do not edit by hand. iOS deletes downloaded "
-                    "images when it changes.",
+                    "decreases; do not edit by hand. Clients compare it to "
+                    "decide whether to re-fetch this version's catalog.",
     }
     with open(path, "w") as f:
         json.dump(state, f, indent=2)
@@ -267,6 +271,10 @@ def build_catalog(ver):
         "romwbw_version": ver,
         "generation": catalog_generation(ver, disk_entries, rom_entries),
         "status": vmeta["status"],
+        # Carried here as well as in the index, so a client holding only a
+        # per-release catalog still knows what it has. See the index entry for
+        # why this is a boolean and `status` is not.
+        "prerelease": bool(vmeta.get("prerelease")),
         "release_tag": tag,
         "base_url": base_url,
         "hbios": vmeta["hbios"],
@@ -305,12 +313,11 @@ def write_legacy_xml(cat, path):
     A client can point at this URL before it learns the JSON schema, which lets
     the URL migration and the parser migration be two separate releases.
 
-    The version attribute is the CATALOG GENERATION, and on iOS a change to it
-    deletes downloaded images (checkCatalogVersionAndInvalidate).  It is
-    therefore derived from the content, not incremented by hand, and it is
-    per-(interface, RomWBW version): switching between RomWBW versions must not
-    look like a catalog bump, or a user toggling 3.5.1 -> 3.6.0 -> 3.5.1 has
-    their library deleted twice.
+    The version attribute is the CATALOG GENERATION.  It is derived from the
+    content, not incremented by hand, and it is per-(interface, RomWBW
+    version): switching between RomWBW versions must not look like a catalog
+    bump.  iOS used to delete downloaded images on a change to it, which is
+    where both rules come from.
     """
     root = ET.Element("disks")
     root.set("version", str(cat["generation"]))
@@ -365,6 +372,21 @@ def build_help():
             "size": os.path.getsize(path),
             "sha256": sha256(path),
         })
+
+    # And the other direction.  Listing a file that is not there was already an
+    # error; a file that is there and listed nowhere was not, and it is the
+    # quieter of the two: the index is the only thing that tells a client a
+    # topic exists, so an unlisted topic is published nowhere and reported by
+    # nothing.
+    listed = set(t["filename"] for t in src["topics"])
+    on_disk = set(f for f in os.listdir(os.path.join(ROOT, "help"))
+                  if f.startswith("help_") and f.endswith(".md"))
+    unlisted = sorted(on_disk - listed)
+    if unlisted:
+        sys.exit("gen_catalog: help/%s is in the checkout and listed in no "
+                 "help/topics.json entry, so nothing would publish it."
+                 % ", help/".join(unlisted))
+
     return {
         "base_url": "%s/%s/" % (DL, HELP_TAG),
         "topics": topics,
@@ -387,9 +409,39 @@ def build_index(versions):
         vmeta = load("versions", ver, "version.json")
         entries.append({
             "romwbw_version": ver,
-            "label": "RomWBW %s" % ver,
+            # THE ONE FIELD EVERY CLIENT SHOWS EVERYWHERE IT NAMES A RELEASE.
+            # A snapshot says so in its label, because `status` and
+            # `prerelease` are rendered in some surfaces and not others -
+            # cpmdroid, for one, labels the row in its chooser dialog and then
+            # shows a bare "RomWBW 3.7.0-dev.14" on the Settings screen the
+            # user actually lives on. Putting the words here reaches all four
+            # clients with no client release, which is the whole point of this
+            # repository.
+            "label": ("RomWBW %s (development snapshot)" % ver
+                      if vmeta.get("prerelease") else "RomWBW %s" % ver),
             "status": vmeta["status"],
             "default": bool(vmeta.get("default")),
+            # A BOOLEAN A CLIENT CAN BRANCH ON.  `status` beside it is free text
+            # - docs/CATALOG_SCHEMA.md declares it an open set - so a client
+            # that hid entries by matching status strings would break the first
+            # time a new word was used.  This has exactly one meaning: upstream
+            # does not call this a release.
+            #
+            # A client MUST default to hiding these and show them only behind an
+            # explicit opt-in. NONE DOES YET - measured 2026-09-18 across all
+            # four, each of which reads this index and would list a prerelease
+            # entry like any other. The item is filed in each of their
+            # todo.txt. Until then `default: false` is the whole protection,
+            # which is why check_committed.py and verify_catalog.py enforce
+            # that and not this flag alone.
+            #
+            # The reason a client must: a snapshot and the release it precedes
+            # are indistinguishable by HCB: v3.7.0-dev.14 reads 57 a8 37 00,
+            # byte for byte what a released 3.7.0 will read.  The CBIOS banner
+            # is the only thing that separates them - "CBIOS v3.7.0-dev.14
+            # [WBW]" against "CBIOS v3.7.0 [WBW]" - which is why the version
+            # directory is named for the full upstream tag rather than 3.7.0.
+            "prerelease": bool(vmeta.get("prerelease")),
             "released": vmeta.get("released"),
             "hbios": vmeta["hbios"],
             "release_tag": tag,
@@ -434,10 +486,95 @@ def build_index(versions):
     return idx
 
 
+def version_key(v):
+    """Order version directory names the way SEMVER does, which is the way a
+    human reads a release history.
+
+    Two bugs lived here, both found by adding a real snapshot to the tree:
+
+    1. It was a plain sorted() on the directory NAME, a string compare, so
+       "3.10.0" sorted BEFORE "3.5.1" - "1" < "5" at the second character. The
+       index's romwbw_versions array is emitted in this order and
+       docs/CATALOG_SCHEMA.md documents it as the listing order, so the first
+       double-digit minor upstream shipped would have put the newest release at
+       the TOP of every client's list.
+
+    2. The first fix handled digits but sorted a pre-release AFTER its own
+       release, and compared pre-release numbers as text: it gave
+       3.7.0, 3.7.0-dev.14, 3.7.0-dev.9, 3.7.0-dev.2 - backwards twice over.
+
+    Semver settles both, and it matches the calendar: a pre-release has LOWER
+    precedence than the release it precedes (3.7.0-dev.14 < 3.7.0), and
+    dot-separated identifiers inside the suffix compare NUMERICALLY when they
+    are numbers (dev.2 < dev.9 < dev.14).
+
+    Nothing derives a DEFAULT from this order - that is an explicit flag per
+    version, and a prerelease may never hold it (check_committed.py,
+    verify_catalog.py) - so this is display order, not selection.
+    """
+    core, _, pre = v.partition("-")
+
+    nums = []
+    for part in core.split("."):
+        digits = ""
+        for ch in part:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        nums.append(int(digits) if digits else 0)
+
+    # (1,) with no identifiers sorts after (0, ...), so a bare release follows
+    # every pre-release of itself.
+    if not pre:
+        return (nums, 1, [])
+
+    ids = []
+    for part in pre.split("."):
+        if part.isdigit():
+            # Semver: numeric identifiers rank below alphanumeric ones.
+            ids.append((0, int(part), ""))
+        else:
+            ids.append((1, 0, part))
+    return (nums, 0, ids)
+
+
 def all_versions():
     d = os.path.join(ROOT, "versions")
-    return sorted(v for v in os.listdir(d)
-                  if os.path.isfile(os.path.join(d, v, "version.json")))
+    return sorted((v for v in os.listdir(d)
+                   if os.path.isfile(os.path.join(d, v, "version.json"))),
+                  key=version_key)
+
+
+def rewrite_help_block():
+    """Bring the COMMITTED index's help block back in step with help/, no build.
+
+    --index cannot do this: it regenerates the whole index and refuses when a
+    version's catalog is not in build/, which needs ~420MB of upstream downloads
+    and the Z80 toolchain.  But the help block is derived from help/ alone - no
+    artifact, no upstream, no toolchain - so editing a topic should not cost a
+    full build to make the tree consistent again.  Without this, the help check
+    in tools/check_committed.py names a remedy nobody can run on a fresh clone.
+
+    It rewrites only the `help` key.  Everything else in the document is left
+    exactly as it was, so this cannot quietly restate a version's claims, and it
+    is not a hand edit: the sizes and hashes are still measured here.
+    """
+    tracked = os.path.join(ROOT, "catalog", IFACE, "index.json")
+    with open(tracked) as f:
+        idx = json.load(f)
+    before = idx.get("help")
+    idx["help"] = build_help()
+    if before == idx["help"]:
+        print("  %s: the help block already matches help/" % os.path.join("catalog", IFACE, "index.json"))
+        return
+    with open(tracked, "w") as f:
+        json.dump(idx, f, indent=2)
+        f.write("\n")
+    print("  %s: help block rewritten from help/ (%d topic(s))"
+          % (os.path.join("catalog", IFACE, "index.json"), len(idx["help"]["topics"])))
+    print("  The PUBLISHED index still carries the old one until it is re-cut:")
+    print("  see docs/RELEASING.md and help/README.md.")
 
 
 def main():
@@ -445,6 +582,9 @@ def main():
     versions = all_versions()
     if args and args[0] == "--index":
         build_index(versions)
+        return
+    if args and args[0] == "--help-block":
+        rewrite_help_block()
         return
     targets = args or versions
     print("Generating interface-%s catalogs" % IFACE)

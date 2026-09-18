@@ -72,7 +72,7 @@ See §5.
 | `repo` | string | `"https://github.com/avwohl/romwbw_disks"`. Where the sources and this document come from. |
 | `index_url` | string | The canonical URL of this document, self-referentially, and the URL every client compiles in. It goes through `releases/latest/download/` and names **no release tag** - see §6.2. |
 | `help` | object, optional | Where the in-app help lives. See §2.2. Optional: a client that predates it ignores it, and a client that knows it must cope with its absence. |
-| `romwbw_versions` | array of object | One entry per published RomWBW version, in the order `tools/gen_catalog.py` walked `versions/` (sorted by directory name). |
+| `romwbw_versions` | array of object | One entry per published RomWBW version, in **semver precedence order** — a pre-release sorts before the release it precedes (`3.6.0`, `3.7.0-dev.2`, `3.7.0-dev.14`, `3.7.0`). `tools/gen_catalog.py` `version_key` defines it and `tools/check_committed.py` verifies the committed index matches. Do not rely on array position to select anything; read `default`. See §2.3.1. |
 
 ### 2.2 The `help` block
 
@@ -130,9 +130,10 @@ size and hash, so they cannot be authored wrong.
 | Field | Type | Meaning |
 |---|---|---|
 | `romwbw_version` | string | The upstream RomWBW release, e.g. `"3.5.1"`. This is the second axis of the two-level catalog and the `<ver>` in every asset name. |
-| `label` | string | Display string, `"RomWBW " + romwbw_version` (`tools/gen_catalog.py:273`). For a menu. Do not parse it. |
+| `label` | string | Display string for a menu. `"RomWBW " + romwbw_version`, plus `" (development snapshot)"` when `prerelease` is true. **Do not parse it** — and do show it wherever you name the release, not only in the picker, because for a snapshot it is the surface that carries the warning. |
 | `status` | string | `"stable"` or `"preview"` today. Copied from `versions/<ver>/version.json`. Not a closed set — see §6. |
-| `default` | boolean | The version to select when the user has no preference. The index promises exactly one entry with `true`; `tools/verify_catalog.py:165-167` fails the release otherwise. |
+| `default` | boolean | The version to select when the user has no preference. The index promises exactly one entry with `true`; `tools/verify_catalog.py` fails the release otherwise. |
+| `prerelease` | boolean | **Upstream does not call this a release.** `true` for a RomWBW development snapshot carried here deliberately; absent or `false` for a real release. A client MUST NOT offer a `prerelease` entry by default — hide it behind an explicit opt-in, a "show development snapshots" checkbox or equivalent. Never `true` on the `default` entry: `tools/check_committed.py` and `tools/verify_catalog.py` both refuse that combination. See §2.3.1 for why this is a boolean and `status` is not. |
 | `released` | string or null | Upstream release date, `YYYY-MM-DD`. `"2025-05-21"` for 3.5.1, `"2026-03-28"` for 3.6.0. Read with `.get()` (`tools/gen_catalog.py:276`), so null if a version file omits it. |
 | `hbios` | object | The version bytes for this release. See §2.4. |
 | `release_tag` | string | The immutable GitHub tag holding this version's assets, `v0-romwbw-<ver>`. |
@@ -148,6 +149,39 @@ size and hash, so they cannot be authored wrong.
 `rom_count` and `disk_count` are for showing "24 disks" next to a version in a
 picker without downloading the catalog. They are not a promise about what the
 catalog contains beyond its length.
+
+#### 2.3.1 Why `prerelease` is a boolean, and what it is protecting you from
+
+`status` sits right beside it and is free text — §6 says so, and a client that
+hid entries by matching status strings would break the first time a new word was
+used. `prerelease` has exactly one meaning and is safe to branch on.
+
+**What it is protecting you from.** A RomWBW development snapshot and the
+release it precedes are *indistinguishable by their version bytes*. Measured on
+the real artifact: `v3.7.0-dev.14`'s HCB reads `57 a8 37 00`, which is byte for
+byte what a released `3.7.0` will read. So `hbios.ver_byte` and
+`hbios.upd_byte` cannot separate them, and neither can anything a client
+computes from them — including `emu_validate_rom_hcb`, which is what every
+client uses to decide a ROM is loadable.
+
+The one thing that does separate them is the **CBIOS banner in the disk image**,
+which is a string and carries the full tag:
+
+    ROM   (HCB, two bytes)   -> the emulator reports "RomWBW v3.7.0"
+    disk  (CBIOS banner)     -> "CBIOS v3.7.0-dev.14 [WBW]"
+
+That asymmetry is deliberate and asserted by `tools/boot_test.sh`, which checks
+both halves and fails if the ROM ever starts reporting the suffix.
+
+**What this means for a client.** Treat a `prerelease` entry as opt-in, label it
+as a snapshot in the UI, and do not let it become a user's default by accident.
+`romwbw_version` carries the full upstream tag (`"3.7.0-dev.14"`, not
+`"3.7.0"`), so it is safe to display — but do not parse it as three numbers.
+
+**Ordering.** `romwbw_versions` is emitted in semver precedence order
+(`tools/gen_catalog.py` `version_key`), in which a pre-release sorts *before*
+the release it precedes: `3.6.0`, `3.7.0-dev.2`, `3.7.0-dev.14`, `3.7.0`. Do
+not rely on array position to pick anything; read `default`.
 
 ### 2.4 The `hbios` object, and why it is in the index
 
@@ -225,7 +259,8 @@ One per RomWBW version, on that version's immutable release tag.
 | `interface` | string | `"v0"`. |
 | `romwbw_version` | string | The RomWBW release these assets are built for. `tools/verify_catalog.py:185-187` fails the release if this disagrees with where the index filed it. |
 | `generation` | integer | The catalog generation for this RomWBW version. See §4. |
-| `status` | string | Same value as the index entry's `status`. |
+| `status` | string | Same value as the index entry's `status`. `"stable"`, `"preview"` and `"snapshot"` are in use; not a closed set — see §6. |
+| `prerelease` | boolean | Same value as the index entry's `prerelease`, carried here so a client holding only a per-release catalog still knows what it has. See §2.3.1. |
 | `release_tag` | string | `v0-romwbw-<ver>`. |
 | `base_url` | string | Download prefix, **ending in `/`**. Asset URL is `base_url + filename`. |
 | `hbios` | object | Same shape and values as the index entry's `hbios`. See §2.4. |
@@ -389,23 +424,24 @@ content hash is used on its own.
 
 ### 4.1 Why it has to be exactly this
 
-> **Since 2026-09: iOS no longer deletes on a generation bump.**
-> `checkCatalogVersionAndInvalidate` and `deleteCatalogDisks(named:)` are gone.
-> The replacement, `recordCatalogGeneration`, only writes the value down - the
-> per-asset sha256 is the freshness trigger, so a bumped generation invalidates
-> nothing by itself. The contract below describes what `generation` is FOR, not
-> what any client does with it today.
+`generation` answers one question: *are this version's artifacts still the ones
+I already have?* A client compares it for equality against the value it stored
+last time and re-fetches the catalog when it differs. That is the whole of the
+contract, and in particular **it is not an instruction to delete anything** —
+the per-asset `sha256` is the freshness trigger.
 
-
-iOS treats a change to this value as an instruction to delete files.
-`checkCatalogVersionAndInvalidate` reads the `UserDefaults` key
-`"catalogVersion"`; when the published value differs it calls
-`deleteCatalogDisks(named: catalogFilenames)` and shows an alert titled
-"Disk Catalog Updated". A spurious change destroys a user's downloaded library.
+No client deletes on a bump, measured in all three client trees on 2026-09-18:
+ioscpm's `recordCatalogGeneration` only writes the value down, cpmdroid's
+`CatalogLoader` notes it and logs "downloaded images are kept and re-verified per
+file", and z80cpmw's `DiskCatalog.cpp` says outright that nothing may be made to
+delete on it. The requirement below is older than that and
+outlives it — iOS once wiped its downloaded library whenever the number moved,
+and the counter still has to be trustworthy enough that a client *could* act on
+it, because a client that has not been read is not a client that keeps files.
 
 - A **hand-incremented number** moves when nothing moved. Somebody fixes a typo
-  in a description, bumps the number out of habit, and every iOS user loses
-  201 MB of downloads for a spelling correction.
+  in a description and bumps the number out of habit, and a client acting on it
+  loses 201 MB of downloads to a spelling correction.
 - A **content hash** never moves spuriously, but it is not monotonic and not an
   integer. It cannot answer "is this newer".
 
@@ -460,15 +496,16 @@ the counter were global, every publication under any version would invalidate
 every version's downloads.
 
 **What this asks of a client:** a client that supports more than one RomWBW
-version must store its remembered `catalogVersion` **per RomWBW version**, the
-same way it must namespace its NVRAM blob per version. One shared
-`UserDefaults` key across versions re-creates the exact deletion loop the
-per-version counter was built to prevent — and it will not be obvious today,
-because both published versions happen to be at generation 1. The NVRAM problem
-is the same shape: RomWBW's `NVSW_CHECKSUM` XORs the version bytes into the
-seed, so a blob saved under 3.5.1 fails validation under a 3.6.0 ROM and
-silently resets to defaults, and iOS stores it under one key `"emulatorNvram"`.
-See [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md).
+version must store its remembered generation **per RomWBW version**, the same
+way it must namespace its NVRAM blob per version. One shared key across versions
+makes every switch between releases look like a publication — and it will not be
+obvious today, because both published versions are at generation 2. The NVRAM
+problem is the same shape: RomWBW's `NVSW_CHECKSUM` XORs the version bytes into
+the seed, so a blob saved under 3.5.1 fails validation under a 3.6.0 ROM and
+silently resets to defaults. ioscpm namespaces both —
+`CatalogMigration.versionedKey("emulatorNvram", romwbwVersion:)`, so one
+container holds `emulatorNvram.v0.3.5.1` beside `emulatorNvram.v0.3.6.0`. See
+[CLIENT_MIGRATION.md](CLIENT_MIGRATION.md).
 
 ### 4.4 How a client should use it
 
@@ -493,7 +530,7 @@ An XML declaration, then a root `<disks>` element with three attributes
 
 | Attribute | Value | Notes |
 |---|---|---|
-| `version` | the catalog `generation`, as a decimal string | Currently `"1"` for both versions. |
+| `version` | the catalog `generation`, as a decimal string | Currently `"2"` for both versions. |
 | `interface` | `"v0"` | New in this repo. |
 | `romwbw` | `"3.5.1"` / `"3.6.0"` | New in this repo. |
 
@@ -523,14 +560,14 @@ parser reads any attribute except one. Verified: `cpmdroid`'s `parseDisksXml`
 `z80cpmw` reads none either (`DiskCatalog.cpp:29-30`). Only iOS reads an
 attribute, and only `version`.
 
-Which is the one that bites. The catalog shipped today is `<disks version="13">`.
-This document starts at `version="1"`, per RomWBW version. The first iOS client
-that points at this URL sees 13 → 1, `checkCatalogVersionAndInvalidate` fires,
-and it deletes its catalog-named disks once. That is unavoidable and mostly
-moot: every filename changes under the `<id>-v0-<ver>` convention anyway, so the
-old downloads would be orphaned regardless, and saved-state identity in all
-three clients is filename-only. The migration has to be planned rather than
-stumbled into; [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md) covers it.
+Which is the one that bit. The pre-v0 catalog was `<disks version="13">` and
+this document starts at `version="1"` per RomWBW version, so an iOS client still
+carrying the old deletion behaviour would have seen 13 → 1 and dropped its
+catalog-named disks once. It was moot either way — every filename changes under
+the `<id>-v0-<ver>` convention, so the old downloads were orphaned regardless,
+and saved-state identity in the three GUI clients is filename-only — and it is
+now historical: they migrated on 2026-09-05 and the deleting call is gone from
+ioscpm. [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md) covers it.
 
 ## 6. Compatibility rules
 
@@ -569,9 +606,16 @@ with `.get()` and can be null.
 **`generation` jumping by more than 1.** Compare, do not compute.
 
 **New `status` and `license` values.** Both are free text copied from the
-version metadata. `"stable"` and `"preview"`, and `"Mixed"`, `"Abandonware"`,
+version metadata. `"stable"`, `"preview"` and `"snapshot"`, and `"Mixed"`, `"Abandonware"`,
 `"Freeware"`, `"Open Source"`, are what is in use — not a closed enum. Display
 unknown values; do not fail on them.
+
+**A `prerelease` entry appearing.** Since 2026-09-18 the index may carry a
+RomWBW development snapshot, flagged `prerelease: true` and never `default`. A
+client built before that field existed reads it as absent, treats the entry as
+an ordinary version, and will happily offer a snapshot alongside the releases —
+which is why the flag is paired with `default: false` rather than relying on the
+flag alone. Add the opt-in; until you do, the entry is visible but not selected.
 
 **`base_url` ending in `/`.** Concatenate `base_url + filename`. Do not insert
 a separator. This is the exact spot where the three current clients disagree

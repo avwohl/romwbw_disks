@@ -3,17 +3,19 @@
 # check_source_drift.sh - do this repository's Z80 sources still agree with
 # romwbw_emu's?
 #
-# Four files exist in both trees, and nothing until now compared them.  That is
-# the price of the two repositories building independently: romwbw_emu still
-# builds its own bundled ROM and its own two tracked disk images from src/, and
-# this repository builds the published artifacts from its own copies.  Neither
+# Three files exist in both trees, and nothing until now compared them.  That is
+# the price of the two repositories building independently: romwbw_emu builds and
+# tests its emulator from src/, this repository builds the published artifacts
+# from its own copies, and since its v1.40 romwbw_emu tracks no ROM and no disk
+# image of its own - see the note further down.  Neither
 # is a symlink to the other and neither is generated, so a fix applied to one
 # and not the other is invisible until a user hits it.
 #
-#   src/r8.asm       identical in both, and must stay so
-#   src/w8.asm       identical in both, and must stay so
-#   src/emu_rom.asm  identical in both, and must stay so
+#   src/r8.asm         identical in both, and must stay so
+#   src/w8.asm         identical in both, and must stay so
 #   src/emu_hbios.asm  identical in both, and must stay so
+#
+# src/emu_rom.asm was a fourth until 69d2a71; see the note by the loop below.
 #
 # emu_hbios.asm used to be the interesting one.  romwbw_emu hardcoded
 # `db 035h` / `db 010h` at both stamp sites, because that tree was cut from one
@@ -64,10 +66,11 @@ echo
 
 # --- the two that must match byte for byte ---------------------------------
 #
-# emu_rom.asm was a third.  It is gone from this repository: nothing here ever
-# built it, it carries no `.z80` directive so it does not even assemble, and
-# keeping an unbuildable file in two repositories so that a cmp could hold the
-# two copies in step was the duplication doing the opposite of its job.
+# emu_rom.asm was a third file in this loop.  It is gone from this repository:
+# nothing here ever built it, it carries no `.z80` directive so it does not even
+# assemble, and keeping an unbuildable file in two repositories so that a cmp
+# could hold the two copies in step was the duplication doing the opposite of
+# its job.
 # romwbw_emu keeps the one copy, as the record of a path not taken.
 
 echo "Sources that must be identical:"

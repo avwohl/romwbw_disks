@@ -9,7 +9,8 @@ between them, and what supporting each one costs.
 
 ## Releases only, never development snapshots
 
-Only a real RomWBW release is published from here.
+A real RomWBW release, or a development snapshot this repository has
+**deliberately chosen to carry**, flagged and never the default.
 
 This matters more than it sounds, because upstream tags development snapshots
 too and they sort **above** the newest release on the GitHub releases page. As
@@ -21,11 +22,22 @@ neither the version bytes nor the CBIOS mismatch guard can tell a snapshot from
 the release it precedes.
 
 `tools/fetch_romwbw.sh` enforces the rule: it refuses any upstream tag that is
-not a plain `vX.Y.Z`, and separately refuses one GitHub flags as a prerelease.
-The tag-shape test needs no network and no `gh`, so it holds in CI too.
-`ALLOW_PRERELEASE=1` overrides both, with a warning, for local experiments —
-never for publishing, because a per-version tag here is immutable once cut and
-upstream can change anything before the release ships.
+not a plain `vX.Y.Z` unless `versions/<ver>/version.json` declares
+`"prerelease": true`, and it refuses a version that declares itself while GitHub
+calls the tag a full release. The tag-shape test needs no network and no `gh`,
+so it holds in CI too. Its GitHub cross-check now falls back to plain `curl`,
+because the releases API is public and `gh` prints a 401 body to **stdout** on
+an expired token — which silently disabled that half of the guard for as long as
+it was gh-only.
+
+**`v3.7.0-dev.14` is carried**, since 2026-09-18, at the owner's decision. It is
+`prerelease: true`, `default: false`, `status: "snapshot"`, and lives at
+`versions/3.7.0-dev.14/` — named for the full tag so nothing it publishes can
+collide with a real 3.7.0. See CLAUDE.md, "Snapshots are carried, deliberately
+and never as the default", for the four guards that make it safe.
+
+`ALLOW_PRERELEASE=1` remains for a local build of a snapshot this repository does
+NOT carry.
 
 `tools/check_upstream.sh` prints which upstream releases exist, which are
 carried here, and which are prereleases, so "is there a new RomWBW?" has a
@@ -37,7 +49,7 @@ Published here:
   3.6.0            stable
 
 Upstream wwarthen/RomWBW (newest carried here: 2026-03-28):
-  v3.7.0-dev.13      2026-08-02  prerelease - NOT publishable
+  v3.7.0-dev.14      2026-09-08  prerelease - carried, non-default
   v3.6.0             2026-03-28  published here
   v3.5.1             2025-05-21  published here
   v3.5.0             2025-04-04  older, not carried
@@ -233,7 +245,7 @@ tracks — exactly 8,388,608 bytes per slice. A combo image is a 1,048,576-byte
 MBR prefix followed by six whole slices, 51,380,224 bytes. RomWBW's hd1k MBR
 partition type is `0x2E`. All of that holds for both releases.
 
-(Not to be confused with `tools/diskdefs`, which is this repo's own cpmtools
+(Not to be confused with `tools/diskdefs`, which was this repo's own cpmtools
 definition file. It mirrors the same geometry and adds the per-slice `offset`
 definitions cpmtools needs to reach into a combo image; its own header
 explains why it has to exist. It is a separate file from upstream's
@@ -336,18 +348,20 @@ The emulator implements the same seed in `recalcNvramChecksum`
 bytes out of the loaded ROM rather than from a compile-time macro, so the seed
 follows whichever release is booted.
 
-For clients this is a storage-key problem, not a code problem. iOS keeps the
-blob under one `UserDefaults` key, `"emulatorNvram"`
-(`ioscpm/iOSCPM/Views/EmulatorViewModel.swift:199`), which has to become
-per-RomWBW-version before a user can hold both releases. That is tracked in
-[CLIENT_MIGRATION.md](CLIENT_MIGRATION.md).
+For clients this is a storage-key problem, not a code problem: the blob has to
+be keyed per RomWBW version, or a user cannot hold both releases. iOS kept it
+under one `UserDefaults` key, `"emulatorNvram"`, and now namespaces it —
+`CatalogMigration.versionedKey("emulatorNvram", romwbwVersion:)`, so a container
+holds `emulatorNvram.v0.3.5.1` beside `emulatorNvram.v0.3.6.0`. The reasoning is
+in [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md); what each client does now is in
+its own changelog.
 
 ### Toolchain
 
 Nothing in this repo's toolchain differs between the two releases. The same
 `um80`/`ul80` (`pip install um80`) assembles `src/emu_hbios.asm`,
 `src/w8.asm` and `src/r8.asm`; the same `cpmtools` and the same
-`tools/diskdefs` write the images; the same `build/utils/w8.com` and
+`cpmemu/util/cpm_disk.py` writes the images; the same `build/utils/w8.com` and
 `build/utils/r8.com` — byte-identical files, built once — go onto both disk
 sets. The host-transfer utilities belong to the interface, not to any RomWBW
 release (`tools/build_all.sh:26-28`).
@@ -416,12 +430,20 @@ not boot is a failure rather than a possible correct refusal.
 
 ### What is still not known
 
-Nobody has read 3.6.0's `hbios.asm` against the emulator's dispatcher
-function by function. Identical `BF_*` equates prove the function *numbers*
-did not move; they say nothing about changed semantics behind a number. Booting
-six operating systems and round-tripping the private block exercises a great
-deal of that surface but does not enumerate it. A 3.6.0 guest program nobody
-ran could still call something the dispatcher stubs out.
+3.6.0's `hbios.asm` *has* been read against the emulator's dispatcher, function
+by function, on 2026-09-05, and a second pass checked all 82 implemented
+functions against RomWBW's own handlers; see
+[FINDINGS.md](FINDINGS.md) section 11. Identical `BF_*` equates proved the
+function *numbers* did not move, and the read found no semantic change behind a
+number either — what it found was a dispatcher answering six questions wrongly
+all along, five of which 3.6.0 newly made reachable. The sixth, `BF_CIOQUERY`,
+was reachable on 3.5.1 too, through `MODE.COM`.
+
+What is still not known is the rest of the file. Those passes covered the boot
+path, the device inventory, every function the dispatcher implements and 3.6.0's
+new surface; they did not read all 268 KB. A 3.6.0 guest program nobody ran
+could still call something the dispatcher stubs out. That work is
+`romwbw_emu`'s, as were the fixes.
 
 ### Why 3.6.0 is `stable` and `default`
 
@@ -590,8 +612,8 @@ Substitute the real version number for `3.7.0` throughout.
    exist in 3.6.0, and write them for anything new.
 
 5. **Do not create `versions/3.7.0/generation.json`.** `tools/gen_catalog.py`
-   writes it, and hand-editing it breaks the cache-invalidation contract that
-   iOS keys its disk wipe on.
+   writes it, and hand-editing it breaks the only contract a client has for
+   deciding whether to re-fetch a catalog it already holds.
 
 6. **`tools/build_all.sh 3.7.0`.** Runs `build_utils.sh` first — the
    host-transfer utilities are per-interface, not per-release — then
@@ -612,10 +634,12 @@ Substitute the real version number for `3.7.0` throughout.
    `Source/Doc/SystemGuide.md`. `romwbw_pin.h` and `DOWNSTREAM.md` used to
    call this the `proto.asm` diff; both were rewritten for `romwbw_emu` v1.39
    and neither names that file now, because no RomWBW release contains it
-   (`romwbw_pin.h` itself was deleted in v1.44). It is outstanding for 3.6.0
-   (see "What is still not known" above) and it is the one piece of this that a
-   build script cannot do for you. Doing it for 3.7.0 without having done it
-   for 3.6.0 leaves the same gap.
+   (`romwbw_pin.h` itself was deleted in v1.44). It was done for 3.6.0 on
+   2026-09-05 — [FINDINGS.md](FINDINGS.md) section 11 — so for 3.7.0 the diff
+   is against 3.6.0 rather than against 3.5.1, and the lesson from that pass is
+   that the interesting finding was not a changed function but a function the
+   new release made reachable. It is the one piece of this that a build script
+   cannot do for you.
 
 9. **Boot it. There is nothing to teach `romwbw_emu`.** One binary boots any
    release whose ROM carries a readable HBIOS configuration block, so a freshly

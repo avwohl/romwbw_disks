@@ -9,8 +9,8 @@ Two things get published, and they are published differently:
 
 | What | Tag | Mutable? | Size |
 |---|---|---|---|
-| ROMs, disk images, `catalog-v0-<ver>.json`, `disks-v0-<ver>.xml` | `v0-romwbw-<ver>` | **No.** Immutable once a client has shipped against it — see section 5. | 202 MB (3.5.1), 234 MB (3.6.0) |
-| `index-v0.json` | `catalog-v0` | Yes. Re-cut whenever the set of versions changes. | 5421 bytes |
+| ROMs, disk images, `catalog-v0-<ver>.json`, `disks-v0-<ver>.xml` | `v0-romwbw-<ver>` | **No.** Immutable once a client has shipped against it — see section 5. | 202 MB (3.5.1), 234 MB (3.6.0), 218 MB (3.7.0-dev.14) |
+| `index-v0.json` | `catalog-v0` | Yes. Re-cut whenever the set of versions changes. | 6412 bytes |
 
 Section 4 explains why the split exists.
 
@@ -37,12 +37,12 @@ cpmtools is not checked until stage 4 — after the download — so on a fresh
 machine it is worth confirming all of them by hand before starting a 440 MB
 build.
 
-You do **not** need to install a `diskdefs` file system-wide. cpmtools reads
-`./diskdefs` in preference to the system copy, and no distribution's system copy
-carries RomWBW's combo slice definitions, so `tools/build_disks.sh` runs every
-cpmtools call with the working directory set to `tools/` and passes absolute
-image paths. That is what the `cpmtool()` wrapper in `tools/build_disks.sh` is
-for.
+You do **not** need cpmtools, and must not install it — CLAUDE.md, "Do not use
+cpmtools". Disk images are read and written with `cpmemu/util/cpm_disk.py`,
+reached out of a sibling `cpmemu` checkout (`CPMEMU=` overrides the path). It
+addresses a combo image's slices 1-5, which packaged cpmtools 2.23 cannot reach
+at all, and it raises on a format mismatch instead of writing at the wrong
+offset and reporting success.
 
 `sha256sum` is used where it exists and `shasum -a 256` otherwise
 (`tools/common.sh:28`), so macOS and Linux both work unmodified.
@@ -136,6 +136,12 @@ copies cannot drift — and since `romwbw_emu` v1.44 that is true in both trees:
 its `emu_hbios.asm` generates the same include, `romwbw_pin.h` is deleted, and
 `tools/check_source_drift.sh` asserts the two copies are byte-identical.
 
+Since 2026-09-18 a development snapshot MAY be carried, when
+`versions/<ver>/version.json` declares `"prerelease": true` — see CLAUDE.md,
+"Snapshots are carried, deliberately and never as the default", for the four
+guards, and §6 below for what publishing one does differently. What follows is
+why it cannot happen by accident.
+
 The stock-ROM HCB check is also the thing that stops a development snapshot being
 used as banks 1–15. `romwbw_emu/archive/romwbw-v3.6.0/SBC_simh_std_v360.rom` is a
 `v3.6.0-dev.46` build from 2025-12-12 whose HCB reads `36 00`, indistinguishable
@@ -156,7 +162,13 @@ reports `bootable`, the CBIOS banner and which utilities are present.
 Two conditions fail the image and delete it: any CBIOS banner in the slice that is
 not exactly `CBIOS v<ver> [WBW]`, and a manifest that asked for W8/R8 where the
 directory does not have them. The banner check is a whole-string match, not
-major.minor, precisely so a `-dev.NN` banner fails too.
+major.minor, precisely so a `-dev.NN` banner fails — *unless the version
+directory is itself named for the snapshot*, which is exactly how a snapshot is
+carried. For `versions/3.7.0-dev.14/`, `$VER` **is** `3.7.0-dev.14`, so the
+expected banner is `CBIOS v3.7.0-dev.14 [WBW]` and the images match it. That is
+why the directory must be named for the full upstream tag and never `3.7.0`:
+the whole-string match is what keeps a carried snapshot honest, and naming the
+directory `3.7.0` would turn that check from a guard into a rubber stamp.
 
 The only thing this repo adds to a stock image is `W8.COM` and `R8.COM`, and only
 where `disks.json` says. The built `hd1k_combo` differs from the stock upstream
@@ -178,20 +190,17 @@ and `catalog/v0/index.json`.
 `gen_catalog.py --index` regenerates only the index. Use that when you promote a
 version's `status` or move `default` in a `version.json` and nothing was rebuilt.
 
-> **Stale as of 2026-09:** `checkCatalogVersionAndInvalidate` and
-> `deleteCatalogDisks(named:)` no longer exist in ioscpm. The replacement,
-> `recordCatalogGeneration`, deletes nothing - the per-asset sha256 is the
-> freshness trigger.
-
-
-The `generation` counter is content-derived on purpose. iOS's
-`checkCatalogVersionAndInvalidate` compares it against a stored value and calls
-`deleteCatalogDisks` when it differs, so it must not move when nothing moved — a
-hand-incremented number does — and it must be monotonic, which a content hash is
-not. So: hash `[(filename, sha256)]`, and bump the counter in
-`versions/<ver>/generation.json` only when that digest changes. The counter is
-per RomWBW version, so a user toggling 3.5.1 → 3.6.0 → 3.5.1 does not have their
-library deleted twice.
+The `generation` counter is content-derived on purpose. A client compares it
+against a stored value to decide whether to re-fetch this version's catalog, so
+it must not move when nothing moved — a hand-incremented number does — and it
+must be monotonic, which a content hash is not. So: hash `[(filename, sha256)]`,
+and bump the counter in `versions/<ver>/generation.json` only when that digest
+changes. The counter is per RomWBW version, so a user toggling 3.5.1 → 3.6.0 →
+3.5.1 does not look like three catalog changes. iOS used to *delete* a user's
+downloaded images on a bump — `checkCatalogVersionAndInvalidate` and
+`deleteCatalogDisks(named:)`, both gone since build 66 — which is where the
+requirement came from and why it still holds: see
+[CATALOG_SCHEMA.md](CATALOG_SCHEMA.md) §4.1.
 
 **Stage 6 — `tools/verify_release.sh [ver ...]`.** Runs `tools/verify_catalog.py`
 against each built directory and then `--index` against the tree. It re-derives
@@ -223,9 +232,17 @@ Deleting `$ROMWBW_CACHE/.romwbw-dl` costs a re-download; deleting `build/` costs
 
 ## 3. Reproducibility
 
-A clean rebuild produces **all 48 artifacts byte-identical** — 2 ROMs and 20 disk
-images for 3.5.1, 2 ROMs and 24 for 3.6.0. Including the two catalogs, the two
-legacy XML files and the index, all 53 generated files match.
+A clean rebuild produces **all 72 artifacts byte-identical** — 2 ROMs and 20 disk
+images for 3.5.1, 2 ROMs and 24 for 3.6.0, 2 ROMs and 22 for 3.7.0-dev.14.
+Including the three catalogs, the three legacy XML files and the index, all 79
+generated files match.
+
+One deliberate exception, 2026-09-18: `hd1k_combo` for 3.5.1 and 3.6.0 changed
+by 4608 bytes when the last cpmtools caller was replaced by
+`cpmemu/util/cpm_disk.py`, which pads the tail of a file's last block with
+`0x1A` where `cpmcp` used `0x00`. Directory entries and block allocation are
+identical; the images are byte-identical to each other's rebuilds from that
+commit on.
 
 Separately, `emu_avw-v0-3.5.1.rom` has
 
@@ -321,14 +338,18 @@ client that fetches it gets a 404 on a URL the index swears is there.
 
 ### Cutting a per-version release (immutable)
 
-`tools/publish_release.sh` scripts this whole section — verify, create each
-version tag, upload by name, index last. On a `v0-romwbw-*` tag that already
-exists it never changes a published asset: it compares each asset's size
-against what it would upload, leaves the ones already up untouched, uploads
-only what is missing, and aborts by name if any size differs. That is what
-makes an interrupted 200 MB upload recoverable without making an immutable
-tag editable. The commands below are what it runs, and what to do by hand
-when you want to watch each step land.
+`tools/publish_release.sh` scripts this whole section — verify, boot-test, create
+each version tag, upload by name, read every uploaded asset's stored sha256 back
+off GitHub's `digest`, the index last and read that back too, then check the
+Latest flag. It refuses to put the index up if any asset on a version tag is
+served at bytes the catalog does not describe. On a `v0-romwbw-*` tag that already exists it never changes a
+published asset: it compares each asset's **sha256**, taken from GitHub's own
+`digest` field so nothing is downloaded, leaves the ones already up untouched,
+uploads only what is missing, and aborts by name if any differ. That is what
+makes an interrupted 200 MB upload recoverable without making an immutable tag
+editable. It compared size until 2026-09-18, which cannot tell an interrupted
+upload from a rebuild — see section 5. The commands below are what it runs, and
+what to do by hand when you want to watch each step land.
 
 ```sh
 V=3.5.1
@@ -347,7 +368,7 @@ Entry point: https://github.com/$REPO/releases/latest/download/index-v0.json"
 
 gh release upload "$TAG" --repo "$REPO" build/"$TAG"/*
 
-# 24 files for 3.5.1, 28 for 3.6.0.  Check before you publish.
+# 24 files for 3.5.1, 28 for 3.6.0, 26 for 3.7.0-dev.14.  Check before you publish.
 gh release view "$TAG" --repo "$REPO" --json assets \
   --jq '.assets | length, (.[].name)'
 
@@ -376,18 +397,26 @@ Every time after that:
 
 ```sh
 python3 tools/gen_catalog.py --index
-gh release upload catalog-v0 --repo "$REPO" \
-    build/catalog-v0/index-v0.json --clobber
+gh release delete-asset catalog-v0 index-v0.json --repo "$REPO" --yes
+gh release upload catalog-v0 --repo "$REPO" build/catalog-v0/index-v0.json
+gh release view catalog-v0 --repo "$REPO" --json assets \
+    --jq '.assets[] | select(.name=="index-v0.json") | .digest'
 ```
 
-`--clobber` replaces a published asset. This is the **one** place in this
-repository where that is correct, and section 5 explains why it is wrong
-everywhere else. Re-uploading an asset does not move the git tag, so
-`catalog-v0` stays where it was cut.
+**Delete the asset and upload it again; do not `--clobber` it, and read the
+result back.** This is the only asset in the repository that is ever replaced,
+and it is the one that proved `--clobber` cannot be trusted: on 2026-09-10 a
+`--clobber` of this exact name printed nothing, moved the asset's `updated_at`
+and went on serving the old document. Both versions were 5421 bytes, which is
+the condition that hides it. The fourth command is the check — the `digest` must
+equal the sha256 of the file you just uploaded. Replacing an asset does not move
+the git tag, so `catalog-v0` stays where it was cut.
 
-How long GitHub's CDN serves the previous copy after a `--clobber` is not
-something this repo has measured. Do not assume propagation is instant, and do
-not build any client behaviour on it being instant.
+How long GitHub's CDN serves the previous copy afterwards is not something this
+repo has measured. Do not assume propagation is instant, and do not build any
+client behaviour on it being instant. It is a separate question from the one
+above: the read-back asks what is *stored*, not what a CDN edge is still
+handing out.
 
 ### Why the split exists
 
@@ -411,13 +440,7 @@ compiled or cached into it, that URL is a permanent obligation. The only way to
 have a moving pointer at all is to put the moving part somewhere the immutable
 part is not.
 
-> **Stale as of 2026-09:** `checkCatalogVersionAndInvalidate` and
-> `deleteCatalogDisks(named:)` no longer exist in ioscpm. The replacement,
-> `recordCatalogGeneration`, deletes nothing - the per-asset sha256 is the
-> freshness trigger.
-
-
-Client-side, three things make the immutability load-bearing rather than
+Client-side, two things make the immutability load-bearing rather than
 theoretical. Download directories in all three GUI clients are flat and keyed on
 the catalog filename alone: iOS `Documents/Disks/`, Android
 `externalFilesDir/Disks`, Windows `downloadDir + "\\" + filename`
@@ -425,10 +448,13 @@ the catalog filename alone: iOS `Documents/Disks/`, Android
 `downloadDir + "\\disk_ledger.json"` (`DiskCatalog.cpp:733`). Saved-state
 identity is filename-only too — iOS `EmulatorProfile.swift:46-49`, CPMDroid's
 `disk_slot_0..3` prefs (`SettingsRepository.kt:37,61-69`), Z80CPMW's
-`config::DiskConfig{path, isManifest}`. And iOS's
-`checkCatalogVersionAndInvalidate` deletes downloaded catalog disks when the
-generation changes. A filename that changes meaning breaks saved state in all
-three; a generation that moves for no reason deletes a user's library.
+`config::DiskConfig{path, isManifest}`. A filename that changes meaning breaks
+saved state in all three. It used to be worse: iOS's
+`checkCatalogVersionAndInvalidate` deleted downloaded catalog disks whenever the
+generation changed, so a generation that moved for no reason cost a user their
+library. That call is gone since build 66, and none of the three client trees
+deletes on a bump as of 2026-09-18, which removes the sharpest consequence and
+none of the obligation.
 
 ## 5. Never
 
@@ -437,19 +463,29 @@ shipped against it.** Not with `gh release delete`, not with `git push --delete`
 not by moving the tag to a new commit. There is no redirect. The URL either
 resolves to the bytes it always resolved to, or a shipped client fails.
 
-**Never change a published asset in place.** The only asset in this repository
-that is ever replaced is `index-v0.json` on `catalog-v0`, and that is safe only
-because it is 5421 bytes, is fetched fresh, and has nothing cached downstream
-of it.
+**Never change a published asset in place** — with two named exceptions, both on
+mutable tags, both small, both fetched fresh with nothing cached downstream:
+`index-v0.json` on `catalog-v0`, and the seven topic files on `help-v0` when a
+topic is rewritten. Every `v0-romwbw-*` asset is immutable, without exception.
+
+Both exceptions are replaced the same way, and it is not `--clobber`:
+`gh release delete-asset`, then a plain upload of a file whose name on disk is
+already the published name, then read the stored `digest` back. `--clobber` is
+what failed on 2026-09-10, and it failed on both of these paths in one command.
 
 `tools/publish_release.sh` enforces this rather than relying on discipline. It
-passes `--clobber` only for `index-v0.json`; per-version assets are uploaded by
-name, without it. On a tag that already exists it compares each asset's size
-against what it would upload and then either
+never passes `--clobber` at all: per-version assets are uploaded by name, and
+the index is replaced with `gh release delete-asset` and a plain upload. On a tag
+that already exists it compares each asset's **sha256**, read off GitHub's own
+`digest` field so nothing is downloaded, and then either
 
-- leaves it alone, if it is already up at the right size, or
-- aborts, if the sizes differ — that is someone changing an immutable
-  artifact, and it is refused by name.
+- leaves it alone, if it is already up at those exact bytes, or
+- aborts, if they differ — that is someone changing an immutable artifact, and
+  it is refused by name.
+
+It compared size until 2026-09-18, which cannot see a respin at all: every ROM
+is 512 KB before and after, and a catalog whose hashes changed is the same length
+to the byte.
 
 Anything missing is uploaded. That is deliberate: `gh release create` and
 `gh release upload` are two commands, so an upload that dies partway through
@@ -483,9 +519,15 @@ that does not boot is a failure, not a release the emulator was entitled to
 decline.
 
 **Publishing into `index-v0.json` is the assertion that it passed**
-([INTERFACE_V0.md](INTERFACE_V0.md)). A client no longer screens entries on its
-core's behalf, so nothing downstream will catch a release that was published
-untested — it will simply be offered, downloaded, and booted. A release this
+([INTERFACE_V0.md](INTERFACE_V0.md)), and since 2026-09-18
+`tools/publish_release.sh` enforces it rather than trusting you: a real publish
+runs the boot test and refuses on a failure *and on each of its three exit-0
+non-passes* — no emulator (`SKIP:`), a version with nothing built, and the
+mismatch guard left unexercised because no other release's `hd1k_cpm22` image is
+in `build/` for it to try. A skip that
+reads as a pass is exactly the branch this script must not have. `DRY_RUN=1` does
+not need an emulator. A client no longer screens entries on its core's behalf, so
+nothing downstream will catch a release that was published untested — it will simply be offered, downloaded, and booted. A release this
 family's core genuinely could not service is not published into the v0 index at
 all; it goes into `index-v1.json` beside it, which no v0 client opens.
 Publishing a version nothing can boot is how you ship 234 MB nobody can use.
@@ -595,13 +637,18 @@ correction to a published version is a NEW RomWBW version entry or nothing.
 Establish what shipped with the three steps above before assuming otherwise —
 not with `git tag --contains`, which is what got this wrong the first time.
 
-**`tools/publish_release.sh` cannot do a respin, and will not say so.** It skips
-any asset whose size matches what it would upload (section 4). A rebuilt ROM is
-512 KB before and after, so it silently leaves the old bytes in place — while
-still uploading the new `catalog-v0-<ver>.json` that hashes the new ones. The
-result is a published catalog whose every ROM entry fails verification in every
-client. Respin by hand with `gh release upload --clobber`, naming each changed
-asset, and re-run section 7 against a clean directory afterwards.
+**`tools/publish_release.sh` cannot do a respin, and now says so.** It refuses:
+an asset whose published sha256 differs from what it would upload is a conflict
+and stops the run before anything is uploaded, naming each one. That is the
+correct answer for an immutable tag, and it is the answer because the comparison
+is content. It was size until 2026-09-18, and size cannot see a respin at all —
+a rebuilt ROM is 512 KB before and after, and a catalog whose hashes changed is
+the same length to the byte, because a sha256 is a fixed-width field. So a
+respin printed `already up` for every asset and exited `PASS: published` having
+changed nothing. If you have read the paragraph above about what an immutable tag means and are
+respinning anyway, do it with `gh release delete-asset` and a plain upload per
+changed asset, never `--clobber`, then read each one back by `digest` and re-run
+section 7 against a clean directory.
 
 **The old `avwohl/ioscpm` tags `v1.4.5` and `v1.4.12` must stay live
 indefinitely,** and as of 2026-09-06 neither is a legacy concern. Every shipped
@@ -732,7 +779,8 @@ index. It does not, and must not, infer anything from a GitHub badge.
 Encoding the same fact in two places is how ioscpm ended up with four
 documents describing a flag that was never set.
 
-The script does set the flag — `[ "$status" = "stable" ] || prerelease="--prerelease"`
+The script does set the flag — via `gh_prerelease_flag`, which says `stable` is
+the only status that is not a GitHub prerelease
 — so `v0-romwbw-3.6.0` is published as a prerelease. That is a second encoding
 of `status`, and the objection above is the right one: two encodings of one
 fact drift, which is exactly how ioscpm ended up with four documents describing
@@ -850,6 +898,22 @@ for a in c["roms"] + c["disks"]:
     python3 "$TOOLS/verify_catalog.py" "$cat_file" "$WORK/$tag"
 done
 
+# The help topics are advertised by the index's `help` block, under their own
+# tag, so neither loop above fetches them - and the --index pass checks them.
+# Without this it falls back to the checkout's own help/ and reports ok against
+# the very files gen_catalog.py hashed, which verifies nothing. It prints which
+# source answered: it must say (served) here, not (checkout).
+python3 -c '
+import json, sys
+h = json.load(open(sys.argv[1]))["help"]
+tag = h["base_url"].rstrip("/").rsplit("/", 1)[-1]
+for t in h["topics"]:
+    print(tag, h["base_url"] + t["filename"], t["filename"])
+' "$WORK/index-v0.json" | while read -r htag url fn; do
+    mkdir -p "$WORK/$htag"
+    [ -f "$WORK/$htag/$fn" ] || curl -fsSL -o "$WORK/$htag/$fn" "$url"
+done
+
 echo "=== index ==="
 python3 "$TOOLS/verify_catalog.py" --index "$WORK/index-v0.json" "$WORK"
 ```
@@ -890,21 +954,33 @@ Publish, in this order:
       `catalog-v0-<ver>.json`, `disks-v0-<ver>.xml`).
 - [ ] `gh release edit <tag> --draft=false --latest=false`.
 - [ ] Only after every version tag is public: `gen_catalog.py --index`, then
-      upload `index-v0.json` to `catalog-v0` with `--clobber`.
-- [ ] `gh api repos/avwohl/romwbw_disks/releases/latest --jq .tag_name` reports
-      `catalog-v0`, and `gh release list` shows the Latest badge on no
-      `v0-romwbw-*` release.
+      `gh release delete-asset catalog-v0 index-v0.json` and upload
+      `index-v0.json` — **not** `--clobber`, and not a file under another name
+      on disk. Both halves of that cost a publish on 2026-09-10.
+- [ ] **Read every upload back**, the version tags as well as the index:
+      `gh release view <tag> --json assets` reports a `digest` per asset, so every
+      sha256 the catalog claims can be compared against what is stored without
+      downloading anything. An uploader that reports success is not evidence: a
+      `--clobber` of `index-v0.json` once printed nothing, moved its `updated_at`
+      and went on serving the old document. Both versions were 5421 bytes, which
+      is what hides it.
+- [ ] `tools/check_latest.py` passes: some release is Latest, it is the one
+      carrying `index-v0.json`, and `releases/latest/download/index-v0.json`
+      really returns the index. `gh release create` claims Latest by default, so
+      this is the flag that repoints every installed client.
 
 Verify:
 
 - [ ] Run the section 7 script against a clean directory. Every result line `ok`.
-- [ ] Fetch the index URL once more by hand and confirm it lists the version you
-      just published.
+- [ ] `sh tools/unreleased.sh` reports nothing outstanding — it follows each
+      `catalog_url` out of the *published* index and compares every catalog and
+      help topic against what is served.
 
 Do not:
 
 - [ ] delete or re-point any `v0-romwbw-*` tag;
-- [ ] `--clobber` anything except `index-v0.json`;
+- [ ] `--clobber` anything at all — not even `index-v0.json`, which is what
+      taught us that (2026-09-10): delete the asset and upload it again;
 - [ ] mark a per-version release Latest;
 - [ ] touch `avwohl/ioscpm` tags `v1.4.5` or `v1.4.12`.
 
@@ -920,18 +996,32 @@ ZPM3, Z3PLUS, ZSDOS and NZCOM from the images published here, `R8`/`W8`
 round-trip a file byte-identically, and the boot loader prints
 `NV Switches Found`.
 
-Be precise about what is machine-checked. `tools/boot_test.sh` asserts the
-CP/M 2.2 half, for every release this repository publishes: the combo image
-boots, the `CBIOS v<ver> [WBW]` banner appears, the CP/M prompt is reached, the
-emulator reports the release it read from the ROM, a disk from another release
-warns, and `R8`/`W8` round-trip a file byte-identically. It asked the binary
-which releases it would accept until `romwbw_emu` v1.44 removed the answer;
-every published release is now tested unconditionally, with no branch in which
-a failure to boot is a pass. The other five operating systems and the NVRAM
-check were run by hand on 2026-09-05 and are not re-run by any script.
+Be precise about what is machine-checked. `tools/boot_test.sh` asserts all of
+it, for every release this repository publishes: the combo image boots, the
+`CBIOS v<ver> [WBW]` banner appears, the CP/M prompt is reached, the emulator
+reports the release it read from the ROM, a disk from another release warns, and
+`R8`/`W8` round-trip a file byte-identically. It asked the binary which releases
+it would accept until `romwbw_emu` v1.44 removed the answer; every published
+release is now tested unconditionally, with no branch in which a failure to boot
+is a pass.
 
-Still not done: a function-by-function read of 3.6.0's `hbios.asm` against the
-emulator's dispatcher. See [ROMWBW_VERSIONS.md](ROMWBW_VERSIONS.md).
+Since 2026-09-18 that includes the other five operating systems and the NVRAM
+check, which until then had been run by hand once, on 2026-09-05, and by no
+script since. ZSDOS, NZCOM, banked CP/M 3 and ZPM3 are combo slices 1 to 4;
+Z3PLUS has an image of its own, and a missing one is a failure rather than a
+skip. Two of those assertions are worth naming: CP/M 3's banner reads `CP/M v3.0
+[BANKED] for HBIOS v<ver>`, so it checks the banked path and the ROM-to-image
+pairing at once; and NZCOM is checked by asking the booted system for `PATH` and
+requiring ZCPR3's `No File` rather than the stock CCP's `PATH?`, because the
+slice's volume label differs between releases and so cannot be the test.
+
+Still not done: the rest of `hbios.asm`. The dispatcher diff itself was done on
+2026-09-05 and a second pass checked all 82 implemented functions against
+RomWBW's own handlers; between them they found the bugs recorded in
+[FINDINGS.md](FINDINGS.md), all of them in the emulator rather than here. What
+neither pass covered is the rest of that 268 KB file. That work, and the low-severity
+findings left over from it, are `romwbw_emu`'s. See
+[ROMWBW_VERSIONS.md](ROMWBW_VERSIONS.md).
 
 3.6.0 was promoted to `"status": "stable"` on 2026-09-05, on the emulator
 evidence rather than on a shipped client: `romwbw_emu` v1.39 boots it and
@@ -944,22 +1034,14 @@ rebuilt client does not filter at all, so that particular cover is gone for
 anything published from here on; the boot test before publication is what
 replaces it.
 
-**What `default` on 3.6.0 exposes.** No client downloads a ROM yet - each
-bundles a 3.5.1 `emu_avw.rom` - so a client that shipped today would preselect
-3.6.0 disks and boot them against a 3.5.1 ROM, which the guest answers with
-`*** WARNING: HBIOS/CBIOS Version Mismatch ***`. ioscpm says so before it
-happens (`romReleaseMismatchNotice`), so it is warned rather than silent, but it
-is a poor first run. Nothing is affected today because no released client reads
-this index at all.
-
-The ROM is the last version-coupled thing left in a client, and fetching it from
-the catalog is what finishes the job this repository was created to do: a new
-RomWBW version should need a release HERE and nowhere else. `roms[]` has been in
-every catalog from the start for exactly that - `emu_avw` with `default: true`,
-a `sha256` and a size, under the same `base_url` as the disks. Re-bundling a ROM
-per release is the wrong answer; it puts a client release back on the critical
-path for every RomWBW bump. Keep a bundled ROM as the first-launch fallback and
-download the rest.
+**Fetching the ROM from the catalog is done, and it was the last
+version-coupled thing in a client.** Measured in the client trees on 2026-09-18:
+none of the three tracks a `.rom` at all. cpmdroid fetches through
+`DiskDownloadManager.fetchAndReadRom` and z80cpmw through
+`MainWindow::downloadRomThenStart`. That is what closes the point of this repository — a new RomWBW
+version needs a release HERE and nowhere else — and `roms[]` was in every
+catalog from the start for it. What a *user* has installed is a different
+question that no tree can answer; see the README on measuring before claiming.
 
 **How a promotion is done, since it is not a rebuild.** Edit `status` in
 `versions/<ver>/version.json`, run `tools/gen_catalog.py --index`, and publish
@@ -970,8 +1052,9 @@ version's own assets: `catalog-v0-<ver>.json` is on the immutable
 saying `stable` and nothing else. The index is what a client reads `status`
 from, so the index is what has to move.
 
-`tools/publish_release.sh` was once undocumented. It is described in sections 4,
-5 and 6 above now. This item is closed; it appeared neither in this document's
-original text nor in `tools/README.md`'s script table — and it sets `--prerelease`
-in a way section 6 rules out. Either wire it into this document properly or
-delete it before someone runs it expecting section 4's behaviour.
+`tools/publish_release.sh` is described in sections 4, 5 and 6 above and carries
+a row in `tools/README.md`'s script table. The `--prerelease` it sets is not a
+contradiction of section 6: the flag is deliberately a label for a human on the
+releases page, the index is what a client reads `status` from, and the script
+reads the flag back off each published release and fails if it disagrees with
+the manifest. Nothing is open here.
