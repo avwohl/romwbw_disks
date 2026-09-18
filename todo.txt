@@ -17,7 +17,7 @@ release - was answered on 2026-09-17 and its item is gone from below.
 tools/boot_test.sh is the gate: it tests every published release with no refusal
 branch, romwbw_emu v1.44 deleted ROMWBW_SUPPORTED_RELEASES and src/romwbw_pin.h,
 and all three GUI clients dropped the matching per-entry filter the same day
-(z80cpmw 39e2f07, ioscpm efa01a8, cpmdroid 3e5d2af).  docs/INTERFACE_V0.md
+(z80cpmw 3c64be7, ioscpm ed660d5, cpmdroid c46b01b).  docs/INTERFACE_V0.md
 carries the reasoning and docs/RELEASING.md makes the boot test required.  The
 one caveat is not a contract problem: a client binary built before that date
 still filters, and hides a new release from its user until it is rebuilt.

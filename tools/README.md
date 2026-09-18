@@ -14,7 +14,7 @@ of it or a check on it.
 | `gen_catalog.py` | writes the catalogs and the index from the built artifacts — every size and hash computed, none transcribed |
 | `verify_catalog.py` | re-derives every claim a catalog makes, independently of the generator. Works on downloaded assets too. |
 | `verify_release.sh` | runs `verify_catalog.py` across every version and the index |
-| `check_source_drift.sh` | do this repo's Z80 sources still agree with romwbw_emu's? Three must be byte-identical; `emu_hbios.asm` must differ only by its generated `romwbw_ver.inc` parameterisation, which is proved by both trees building the same `emu_avw.rom`. Skips when romwbw_emu is not beside this repo. |
+| `check_source_drift.sh` | do this repo's Z80 sources still agree with romwbw_emu's? All four must be byte-identical - `emu_hbios.asm` was the documented exception until romwbw_emu v1.44 parameterised its copy through the same generated `romwbw_ver.inc`. It then assembles both trees' `emu_hbios.asm` and compares the 32 KB bank 0, and builds `r8.com`/`w8.com` from romwbw_emu's sources; it needs no ROM and no disk image. Skips when romwbw_emu is not beside this repo. |
 | `boot_test.sh` | **the release gate.** Boots every published release, unconditionally: each must reach a CP/M prompt with the right `CBIOS v<ver> [WBW]` banner and no mismatch warning, report the release it read from the ROM, warn on a disk from another release, and round-trip a file through `R8`/`W8`. No refusal branch - a ROM that does not boot is a failure (romwbw_emu v1.44 dropped the release allowlist this used to parse off `--version`). Publishing into `index-v0.json` asserts this passed. Skips when no emulator is present. |
 | `diskinfo.py` | the single source of image facts: bootability, CBIOS banner, directory contents |
 | `diskdefs` | cpmtools definitions, including the `wbw_hd1k_0..5` combo slices no distribution ships |
@@ -62,8 +62,8 @@ The two copies were byte-identical right up to the day they were not: a bug
 fixed in `cpmemu` (`ComboDisk` addressed file data 16384 bytes before the block
 numbers said, so reading any file out of a combo image returned a neighbouring
 file's bytes) would have had to be applied here by hand, and nothing compared
-them. `check_source_drift.sh` covers `r8.asm`, `w8.asm` and `emu_rom.asm`; it
-never covered this file.
+them. `check_source_drift.sh` covers the four Z80 sources - `r8.asm`,
+`w8.asm`, `emu_rom.asm` and `emu_hbios.asm`; it never covered this file.
 
 ## Why `diskdefs` is here
 

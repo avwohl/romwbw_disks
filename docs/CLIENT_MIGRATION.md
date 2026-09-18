@@ -97,7 +97,7 @@ out on its core's behalf. A release this family's core could not service would
 be published as `index-v1.json`, which a v0 client never opens.
 
 That is the posture as of 2026-09-17 in all three GUI clients — z80cpmw
-`39e2f07`, ioscpm `efa01a8`, cpmdroid `3e5d2af` — each of which deleted a
+`3c64be7`, ioscpm `ed660d5`, cpmdroid `c46b01b` — each of which deleted a
 per-entry `emu_romwbw_release_supported()` call rather than repointing it.
 
 Two things this does **not** license:
@@ -358,7 +358,7 @@ for the family, and no client needs an assembler.
    2026-09-05, filtered by `emu_romwbw_release_supported()` in all three rather
    than by a hardcoded list, so a client that was older or newer than its core
    still offered only what that core would load. **The filter came back out on
-   2026-09-17** (z80cpmw `39e2f07`, ioscpm `efa01a8`, cpmdroid `3e5d2af`), when
+   2026-09-17** (z80cpmw `3c64be7`, ioscpm `ed660d5`, cpmdroid `c46b01b`), when
    `romwbw_emu` v1.44 deleted the function it asked: there is no release the
    core refuses, so a filter could only hide a release the user could have
    booted. All three now offer every entry the index lists.

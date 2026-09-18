@@ -208,7 +208,7 @@ it bundles a ROM for one release and would otherwise offer disk images that
 warn against it. It should not narrow the list to protect its core from a
 release it has never heard of; that is what publishing into this index already
 promises. All three GUI clients dropped the release filter on 2026-09-17
-(z80cpmw `39e2f07`, ioscpm `efa01a8`, cpmdroid `3e5d2af`), and a binary built
+(z80cpmw `3c64be7`, ioscpm `ed660d5`, cpmdroid `c46b01b`), and a binary built
 before that still filters until it is rebuilt. See
 [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md).
 
@@ -656,8 +656,9 @@ GET https://github.com/avwohl/romwbw_disks/releases/latest/download/index-v0.jso
 
 Walk `romwbw_versions[]`. A current client offers every entry it finds. This
 example follows the one whose `hbios.ver_byte` is `"0x35"` and `hbios.upd_byte`
-is `"0x10"` — `romwbw_version` `"3.5.1"`, `status` `"stable"`, `default` `true`,
-`generation` `2`. It has not downloaded a single byte of ROM to work this out.
+is `"0x10"` — `romwbw_version` `"3.5.1"`, `status` `"stable"`, `default`
+`false` (3.6.0 carries `default` today), `generation` `2`. It has not
+downloaded a single byte of ROM to work this out.
 
 A client that still bundles one ROM narrows the list to the entry matching those
 two bytes, so that the disk images it offers pair with the ROM it has. A shipped
@@ -677,7 +678,7 @@ catalog_size    11826
 catalog_sha256  942803d1ed67bcd8c6e0a9b730f9a08775618535b8e9affc58c56830839a78fd
 ```
 
-Compare the catalog's `generation` (`1`) against the stored value for RomWBW
+Compare the catalog's `generation` (`2`) against the stored value for RomWBW
 3.5.1. If it differs, this is when downloaded images for **this RomWBW version**
 are invalidated — not for any other version.
 

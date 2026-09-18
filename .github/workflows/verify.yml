@@ -7,14 +7,14 @@ name: verify
 #          catalogs are internally consistent and have not drifted from the
 #          manifests, and checks this repository's Z80 sources still agree with
 #          romwbw_emu's.  No upstream RomWBW download - the only fetch is a
-#          blobless sparse clone of romwbw_emu's src/ and roms/, a couple of
-#          megabytes - so it finishes in under a minute.
+#          blobless sparse clone of romwbw_emu's src/, a couple of megabytes -
+#          so it finishes in under a minute.
 #
 #   full   builds everything from the real upstream Package.zips and verifies
 #          every artifact against its catalog entry.  ~420MB of downloads, so
-#          it runs on demand and weekly rather than per push.  It also takes
-#          romwbw_emu's disks/ so the drift check can compare the assembled
-#          r8.com/w8.com, which quick cannot: that is a 51MB image.
+#          it runs on demand and weekly rather than per push.  It clones the
+#          same src/ as quick: since romwbw_emu v1.40 tracks no ROM and no disk
+#          image, the drift check assembles what it compares.
 #
 # um80 is deliberately NOT pinned.  A um80 output change is meant to turn this
 # red: the fix is to rebuild and republish, not to freeze an old assembler.
@@ -57,12 +57,11 @@ jobs:
       - name: Catalogs are self-consistent and have not drifted
         run: python3 tools/check_committed.py
 
-      # src/ and roms/ only.  This job builds no ROM and takes no 51MB combo,
-      # so the artifact half of the drift check cannot run here at all - it is
-      # the source half that this gate is for, and it is the half that catches
-      # an edit made to one copy and not the other.  The script prints "info"
-      # for each artifact it cannot reach rather than passing quietly; the full
-      # job below is where those become real comparisons.
+      # src/ only, and that is now the whole of what the drift check needs: it
+      # assembles both trees' emu_hbios.asm itself and builds r8.com/w8.com
+      # from romwbw_emu's sources against the ones build_utils.sh produced in
+      # the step above.  No ROM and no 51MB combo, so the comparisons this job
+      # runs are the same ones the full job runs.
       - name: Fetch romwbw_emu to compare sources against
         run: |
           # src only.  This used to also pull roms/ and disks/, because
@@ -98,10 +97,10 @@ jobs:
       - name: Build everything and verify
         run: sh tools/build_all.sh
 
-      # disks/ as well here: with the ROMs built above and romwbw_emu's tracked
-      # combo present, this is the complete check - the three identical sources,
-      # emu_hbios.asm's parameterisation, both trees' emu_avw.rom, and the
-      # assembled r8.com/w8.com that only a real extraction can compare.
+      # Same clone as quick, and the same check: all four sources byte-identical
+      # (emu_hbios.asm included, since romwbw_emu v1.44 parameterised its copy),
+      # both trees' emu_hbios.asm assembled to the same 32 KB bank 0, and
+      # r8.com/w8.com built from romwbw_emu's sources.
       - name: Fetch romwbw_emu to compare sources and assembled output against
         run: |
           # src only - see the quick job.  roms/ and disks/ hold no artifact in

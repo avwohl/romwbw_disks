@@ -307,10 +307,11 @@ name, so cut it from a pushed commit and put the commit in the release notes —
 that is the only link between an asset and the source that produced it.
 
 **And boot it.** `tools/boot_test.sh` is a required step, not a diagnostic:
-since `romwbw_emu` v1.44 no emulator and no client screens a release out, so
-publishing one into `index-v0.json` is this repository's assertion that it
-boots. Section 5 says what that covers and why it replaced a compile-time list;
-the §8 checklist has the exact invocation and the summary line to look for.
+since `romwbw_emu` v1.44 no emulator and no client built after 2026-09-17
+screens a release out, so publishing one into `index-v0.json` is this
+repository's assertion that it boots. Section 5 says what that covers and why
+it replaced a compile-time list; the §8 checklist has the exact invocation and
+the summary line to look for.
 
 ### The order is: version tags first, index last
 

@@ -209,8 +209,8 @@ what an emulator build can run.
 
 A client that still filters the index by release is reading a field that means
 what it always meant; it is merely hiding releases it could boot. All three GUI
-clients dropped that filter on 2026-09-17 — z80cpmw `39e2f07`, ioscpm
-`efa01a8`, cpmdroid `3e5d2af` — the same day `romwbw_emu` released the core
+clients dropped that filter on 2026-09-17 — z80cpmw `3c64be7`, ioscpm
+`ed660d5`, cpmdroid `c46b01b` — the same day `romwbw_emu` released the core
 change as v1.44.
 
 **Publishing a new RomWBW release is now a release tag and a regenerated index

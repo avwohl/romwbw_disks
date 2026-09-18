@@ -206,8 +206,11 @@ build/      output (gitignored)
 
 The RomWBW version is not written in the assembly. `tools/build_rom.sh`
 generates `romwbw_ver.inc` from `versions/<ver>/version.json`, and
-`emu_hbios.asm` includes it — where `romwbw_emu` still keeps two hand-copied
-`db 035h` pairs, because um80 cannot `#include` a C header.
+`emu_hbios.asm` includes it, because um80 cannot `#include` a C header.
+`romwbw_emu` kept two hand-copied `db 035h` pairs until v1.44, which
+parameterised its copy through a `romwbw_ver.inc` of its own — generated from
+the HCB of the stock ROM it overlays. The file is byte-identical in both trees
+now, and `tools/check_source_drift.sh` asserts exactly that.
 
 ## Documentation
 
