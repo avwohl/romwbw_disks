@@ -63,7 +63,7 @@ fixed in `cpmemu` (`ComboDisk` addressed file data 16384 bytes before the block
 numbers said, so reading any file out of a combo image returned a neighbouring
 file's bytes) would have had to be applied here by hand, and nothing compared
 them. `check_source_drift.sh` covers the four Z80 sources - `r8.asm`,
-`w8.asm`, `emu_rom.asm` and `emu_hbios.asm`; it never covered this file.
+`w8.asm` and `emu_hbios.asm`; it never covered this file.
 
 ## Why `diskdefs` is here
 

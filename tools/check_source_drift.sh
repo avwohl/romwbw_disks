@@ -62,10 +62,16 @@ bad()  { echo "  FAIL  $*" >&2; rc=1; }
 echo "comparing $ROOT/src against $EMU_ROOT/src"
 echo
 
-# --- the three that must match byte for byte -------------------------------
+# --- the two that must match byte for byte ---------------------------------
+#
+# emu_rom.asm was a third.  It is gone from this repository: nothing here ever
+# built it, it carries no `.z80` directive so it does not even assemble, and
+# keeping an unbuildable file in two repositories so that a cmp could hold the
+# two copies in step was the duplication doing the opposite of its job.
+# romwbw_emu keeps the one copy, as the record of a path not taken.
 
 echo "Sources that must be identical:"
-for f in r8.asm w8.asm emu_rom.asm; do
+for f in r8.asm w8.asm; do
     a="$ROOT/src/$f"
     b="$EMU_ROOT/src/$f"
     if [ ! -f "$a" ]; then bad "$f is missing from this repository"; continue; fi

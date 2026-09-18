@@ -195,7 +195,7 @@ that the dispatcher has been audited against it —
 ## Layout
 
 ```
-src/        Z80 sources: w8.asm, r8.asm, emu_hbios.asm, emu_rom.asm
+src/        Z80 sources: w8.asm, r8.asm, emu_hbios.asm
 tools/      the build and verify pipeline, plus diskdefs
 versions/   one directory per RomWBW release: version, roms, disks, generation
 catalog/    the generated catalogs, committed so changes show up in a diff

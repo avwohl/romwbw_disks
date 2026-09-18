@@ -9,7 +9,6 @@ they produce are published from here.
 | `w8.asm` | `W8.COM` — writes a CP/M file out to the host. Probes `HBF_HOST_CAPS` and refuses to hand over a host path unless `CAP_SAFE_PATHS` is set. |
 | `r8.asm` | `R8.COM` — reads a host file into CP/M. |
 | `emu_hbios.asm` | Bank 0 of every emulator ROM: a minimal HBIOS that dispatches through `OUT (0xEF),A` instead of touching hardware. |
-| `emu_rom.asm` | A standalone boot ROM. Nothing builds it today; kept because it is the only record of that path. |
 
 ## The version bytes
 
