@@ -30,12 +30,14 @@ artifacts never live on it, so re-cutting it costs one upload of a few
 kilobytes. That is what makes a floating entry point safe: the thing that moves
 is tiny, and the things clients cache never move.
 
-**Step 2 — pick a RomWBW version.** Walk `romwbw_versions[]` and keep the
-entries this build can actually run. Every released client today keeps the one
-entry whose `hbios.ver_byte` / `hbios.upd_byte` match the single release its
-bundled emulator core was built for. A client rebuilt on `romwbw_emu` v1.39 or
-later keeps every entry its core says it can run, and offers the list — see
-§2.4.
+**Step 2 — pick a RomWBW version.** Walk `romwbw_versions[]` and offer what is
+there. Every release in a v0 index has been booted against the emulator before
+it was published, so there is nothing for a client to screen out on the core's
+behalf — see §2.4 and [INTERFACE_V0.md](INTERFACE_V0.md). A client that
+*bundles* a ROM rather than fetching one has a reason of its own to narrow the
+list, and `hbios.ver_byte` / `hbios.upd_byte` are how: they pair a release's ROM
+with its disk images. Shipped clients built before 2026-09-17 filter on them by
+release and keep only the one entry their bundled core was built for.
 
 **Step 3 — fetch that entry's `catalog_url`.** It is an absolute URL already;
 do not build it. For 3.5.1:
@@ -171,37 +173,43 @@ assembler, while `:36` recomputes the expected HCB from the four integers and
 `:94-97` reads the built ROM back at `0x103` and deletes it on a mismatch. So
 the four integers and the two strings cannot drift apart.
 
-**Why these are in the index and not only in the catalog.** Whether a client
-can load a ROM is decided by those two bytes. `emu_validate_rom_hcb`
-(`romwbw_emu/src/emu_init.cc`) reads them out of the image at file offsets
-`0x105`/`0x106` — via `emu_romwbw_release_of_image` — and returns a refusal
-that `emu_load_rom` turns into a failed load.
+**Why these are in the index and not only in the catalog.** They are the
+ROM-to-disk-image pairing, and putting them one level up means a client can
+read the pairing out of a document it has already fetched, before it downloads
+a 512 KB ROM or a 49 MB image to find out. RomWBW's own CBIOS checks itself
+against what the ROM's HBIOS reports and prints
+`*** WARNING: HBIOS/CBIOS Version Mismatch ***` when they disagree; these two
+bytes are that same fact, available before anything is fetched.
 
-What it refuses changed with `romwbw_emu` v1.39, and the field did not. Before
-it, the bytes were compared against a compile-time `ROMWBW_PIN_VER_BYTE` /
-`ROMWBW_PIN_UPD_BYTE`, so a binary built for 3.5.1 physically could not load a
-3.6.0 ROM. Since it, the version is read out of the ROM at run time and one
-binary boots any release in `ROMWBW_SUPPORTED_RELEASES`
-(`romwbw_emu/src/romwbw_pin.h`, today 3.5.1 and 3.6.0); the refusal is reserved
-for a release that core has never been run against, and names both what it
-found and what it accepts. `--allow-untested-romwbw` downgrades it to a warning.
+**They are not an emulator capability flag, though they were used as one.**
+`emu_validate_rom_hcb` (`romwbw_emu/src/emu_init.cc`) still reads them out of
+the image at file offsets `0x105`/`0x106` — via
+`emu_romwbw_release_of_image` — and still reports the release a loaded ROM
+declares. What it no longer does is
+judge it. The history, because the field outlived three different answers:
 
-Putting the version bytes in the index means a client answers that question
-from a document it has already fetched, *before* it downloads anything. Without
-them it would have to fetch a catalog to find out, or worse, download a 512KB
-ROM only to have its own validator refuse it. Filtering in the index costs one
-already-fetched document.
+- Before `romwbw_emu` v1.39 the bytes were compared against a compile-time
+  `ROMWBW_PIN_VER_BYTE` / `ROMWBW_PIN_UPD_BYTE`, so a binary built for 3.5.1
+  physically could not load a 3.6.0 ROM.
+- v1.39 (2026-09-05) made the version runtime state read from the ROM, leaving
+  a hand-edited allowlist, `ROMWBW_SUPPORTED_RELEASES`, as the thing that
+  refused.
+- v1.44 (2026-09-17) deleted the allowlist and `src/romwbw_pin.h` with it. A
+  ROM whose HCB declares any release loads. `emu_romwbw_release_supported()`,
+  `emu_romwbw_supported_list()` and `--allow-untested-romwbw` are gone.
 
-A client built before v1.39 compares the two strings against its own
-compile-time constants and keeps the single entry that matches. A client built
-on v1.39 or later should ask its core rather than assume, since a client can be
-newer or older than the core it links: keep an entry when
-`emu_romwbw_release_supported({ver_byte, upd_byte})` says yes, and offer what
-survives. Same field, same job; only the number of survivors differs. No
-released client carries a v1.39 core yet, so in every shipped app "pick a
-RomWBW version" still means "filter to the one release this binary was built
-for" — and why a client must filter rather than trust `status`: 3.6.0 is
-published `"status": "stable"` yet no shipped client can boot it. See
+What replaced the allowlist is publishing discipline rather than another list:
+`tools/boot_test.sh` boots the artifact being published, and an entry in a v0
+index is the assertion that it passed. [INTERFACE_V0.md](INTERFACE_V0.md) has
+the argument for why a release number was the wrong axis to gate on.
+
+So: a client may narrow the list by these bytes, and has one good reason to —
+it bundles a ROM for one release and would otherwise offer disk images that
+warn against it. It should not narrow the list to protect its core from a
+release it has never heard of; that is what publishing into this index already
+promises. All three GUI clients dropped the release filter on 2026-09-17
+(z80cpmw `39e2f07`, ioscpm `efa01a8`, cpmdroid `3e5d2af`), and a binary built
+before that still filters until it is rebuilt. See
 [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md).
 
 ## 3. catalog-v0-&lt;ver&gt;.json
@@ -264,12 +272,12 @@ this hash.
 |---|---|---|---|
 | `marker` | string | file offsets `0x103`, `0x104` | `"57 A8"` — two uppercase hex bytes separated by a space. `'W'` `0xA8`, the marker that says an HCB follows. |
 | `version` | string | `0x105` | `"0x35"` / `"0x36"`. `(major << 4) | minor`. The `ver` half of the release, read back by `emu_romwbw_release_of_image` (`romwbw_emu/src/emu_init.cc`). |
-| `update` | string | `0x106` | `"0x10"` / `"0x00"`. `(update << 4) | patch`. The `upd` half. `emu_validate_rom_hcb` refuses the load unless the `{ver, upd}` pair appears in `ROMWBW_SUPPORTED_RELEASES` (`romwbw_emu/src/romwbw_pin.h`). |
+| `update` | string | `0x106` | `"0x10"` / `"0x00"`. `(update << 4) | patch`. The `upd` half. Read back with `version` by `emu_romwbw_release_of_image`; since `romwbw_emu` v1.44 no release value is refused, and `emu_validate_rom_hcb` checks the size, the `57 A8` marker and `CB_PLATFORM` only. |
 | `platform` | integer | `0x107` | `0`. A decimal integer, unlike `version` and `update`, which are hex strings. The asymmetry is real; do not assume a uniform encoding. |
 
 These are the exact bytes a client's own validator will read after the download.
-A client that checks them *before* fetching rejects a ROM it could not run
-without spending 512KB. That is the same reason `ver_byte` and
+A client that checks them *before* fetching learns which disk images that ROM
+pairs with without spending 512 KB. That is the same reason `ver_byte` and
 `upd_byte` are in the index (§2.4), one level finer.
 
 **`built_from`** says what went into the image:
@@ -538,9 +546,12 @@ rejects an unrecognised key, or that round-trips the document and drops
 unrecognised keys, is broken by the next release.
 
 **New RomWBW versions appearing in the index.** Adding RomWBW 3.7.0 is a new
-release tag and a regenerated index. No client change, no interface bump. A
-client that filters on `hbios.ver_byte` / `upd_byte` simply will not match the
-new entry until it is rebuilt.
+release tag and a regenerated index. No client change, no interface bump, and
+since 2026-09-17 no emulator change either — a v0 index publishes only releases
+that have been booted, so a current client offers the new entry the first time
+it fetches the index. A client that filters on `hbios.ver_byte` / `upd_byte` by
+release will not match the new entry until it is rebuilt; that is a property of
+the binary, not of the contract.
 
 **New `roms[]` and `disks[]` entries, and entries disappearing.** `hd1k_ws4`
 exists under 3.5.1 and not under 3.6.0. `roms[]` has two entries today; do not
@@ -643,16 +654,15 @@ Three fetches.
 GET https://github.com/avwohl/romwbw_disks/releases/latest/download/index-v0.json
 ```
 
-Walk `romwbw_versions[]` and keep what this build can run. A shipped client's
-bundled core is built for RomWBW 3.5.1, so it keeps the entry whose
-`hbios.ver_byte` is `"0x35"` and `hbios.upd_byte` is `"0x10"` —
-`romwbw_version` `"3.5.1"`, `status` `"stable"`, `default` `true`,
+Walk `romwbw_versions[]`. A current client offers every entry it finds. This
+example follows the one whose `hbios.ver_byte` is `"0x35"` and `hbios.upd_byte`
+is `"0x10"` — `romwbw_version` `"3.5.1"`, `status` `"stable"`, `default` `true`,
 `generation` `2`. It has not downloaded a single byte of ROM to work this out.
 
-A client rebuilt on `romwbw_emu` v1.39 or later asks its core per entry
-(`emu_romwbw_release_supported({ver_byte, upd_byte})`) instead of comparing
-against a constant, and on today's core keeps the 3.6.0 entry as well. The rest
-of this example follows the 3.5.1 entry.
+A client that still bundles one ROM narrows the list to the entry matching those
+two bytes, so that the disk images it offers pair with the ROM it has. A shipped
+binary built before 2026-09-17 does that by release regardless, and sees only
+the entry its core was built for.
 
 **2. That entry's `catalog_url`.**
 

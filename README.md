@@ -23,6 +23,15 @@ nothing else, so a new ROM, disk image or help topic reaches an installed app
 without any of them being rebuilt. Adding a RomWBW release, a ROM or a disk
 image is a release in this repo — not a new build of four clients.
 
+That last sentence was an aspiration until 2026-09-17. Every client, and the
+emulator core underneath them, carried a compile-time allowlist of RomWBW
+releases, so publishing a new one here reached nobody until Windows, macOS,
+iOS, Android and Linux had all been rebuilt. `romwbw_emu` v1.44 deleted the
+core's list, and all three GUI clients dropped theirs the same day. What stands
+in its place is `tools/boot_test.sh` and the rule that a release enters
+`index-v0.json` only after it passes — see
+[docs/INTERFACE_V0.md](docs/INTERFACE_V0.md).
+
 ## The clients
 
 - [ioscpm](https://github.com/avwohl/ioscpm) — iOS and macOS
@@ -124,10 +133,9 @@ before it changes anything.
 ### Proven by running them, not just hashing them
 
 `tools/boot_test.sh` drives the real emulator against the built artifacts. It
-asks the binary which RomWBW releases it can run and holds it to that answer, so
-the same script is correct against an emulator with the old compile-time pin and
-against one with the runtime version. For each release the emulator can run it
-asserts — and currently passes:
+tests **every** published release, unconditionally: since `romwbw_emu` v1.44
+the emulator refuses no release, so there is nothing to ask it and nothing it
+may legitimately decline. For each release it asserts — and currently passes:
 
     === RomWBW v3.5.1 ===
       ok    boots and prints CBIOS v3.5.1 [WBW]
@@ -139,24 +147,37 @@ asserts — and currently passes:
 
 The mismatch warning firing is a pass condition, not a failure: it is now the
 only thing enforcing the ROM/disk pairing. The `R8`/`W8` round trip exercises the
-private `0xE1`–`0xEA` host block that upstream RomWBW knows nothing about. For a
-release the emulator *cannot* run, the refusal by name is the pass. The script
-skips rather than fails when no emulator binary is present, since a machine that
-can build these is not necessarily one that can run them.
+private `0xE1`–`0xEA` host block that upstream RomWBW knows nothing about. There
+is no case in which a release failing to boot is a pass — the script used to
+expect a refusal by name for a release the emulator had not been built against,
+and `romwbw_emu` v1.44 removed the refusal. It skips rather than fails when no
+emulator binary is present, since a machine that can build these is not
+necessarily one that can run them.
+
+**This script is the release gate.** Publishing a release into `index-v0.json`
+is the assertion that it passed here — see
+[docs/INTERFACE_V0.md](docs/INTERFACE_V0.md) and
+[docs/RELEASING.md](docs/RELEASING.md) §5.
 
 ## Status
 
 Both published releases are `stable`, and the index flags one of them
-`default: true` — a fresh client lands there unless its own core filters it out.
+`default: true` — a fresh client lands there.
 
-A client filters the index down to the releases its core can boot, using the
-`hbios.ver_byte` and `hbios.upd_byte` in every entry. That is what those two
-bytes are for, and it is why promoting a release some shipped build cannot boot
-is safe rather than a trap: the build simply does not see it. The version is
-read out of the loaded ROM at run time in `romwbw_emu` (v1.39 onward), so one
-binary boots every release in that core's `ROMWBW_SUPPORTED_RELEASES`.
+A client offers every release the index lists. It does not screen them on its
+core's behalf: the emulator reads the RomWBW version out of the loaded ROM
+(`romwbw_emu` v1.39 onward) and since v1.44 refuses no release at all, so one
+binary boots whatever is published. The `hbios.ver_byte` and `hbios.upd_byte`
+in every entry keep the job they always had — they pair a ROM with the disk
+images that match it, which is the axis the guest's own
+`HBIOS/CBIOS Version Mismatch` warning is about. A client that still bundles
+one ROM uses them for exactly that.
 
-Under that core, RomWBW 3.6.0 has been booted from the images published here.
+Binaries built before 2026-09-17 filter the index by release and see only the
+version they were built for; that is a property of those builds, not of the
+catalog, and rebuilding is the whole of the fix.
+
+RomWBW 3.6.0 has been booted from the images published here.
 `tools/boot_test.sh` asserts the CP/M 2.2 boot, the `CBIOS [WBW]` banner, the
 prompt, the release the emulator reports back from the ROM, a mismatched pair
 warning in both directions, and the `R8`/`W8` round trip. Checked once by hand

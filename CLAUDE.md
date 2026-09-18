@@ -85,9 +85,11 @@ multi-artifact re-cut as local damage.
 
 ## The Z80 sources are shared with romwbw_emu
 
-`src/r8.asm`, `src/w8.asm` and `src/emu_rom.asm` must stay byte-identical to
-romwbw_emu's; `src/emu_hbios.asm` differs only by its generated `romwbw_ver.inc`
-parameterisation, which is proved by both trees building the same `emu_avw.rom`.
+All four - `src/r8.asm`, `src/w8.asm`, `src/emu_rom.asm` and `src/emu_hbios.asm`
+- must stay byte-identical to romwbw_emu's. `emu_hbios.asm` used to be the
+exception, differing by its generated `romwbw_ver.inc` parameterisation, because
+that tree hardcoded the release it was cut from; romwbw_emu v1.44 parameterised
+its copy too, so plain equality is the check now.
 `tools/check_source_drift.sh` is the check, and it skips when romwbw_emu is not
 beside this repo - so a green run on a machine without it has not checked.
 

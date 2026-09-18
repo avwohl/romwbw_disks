@@ -137,6 +137,17 @@ header and the assembly leaves those three untouched and silent.
 > this tree's own artifacts are cut from", plus `ROMWBW_SUPPORTED_RELEASES`,
 > the list of releases the core will load. Items 2, 3 and 11 are unchanged in
 > `romwbw_emu`; in *this* repo they come from a generated `romwbw_ver.inc`.
+>
+> **Superseded again 2026-09-17, for items 1, 2, 3 and 11.** `romwbw_emu` v1.44
+> deleted `src/romwbw_pin.h` outright — `ROMWBW_DEFAULT_*` and
+> `ROMWBW_SUPPORTED_RELEASES` with it — so item 1 no longer exists in any form,
+> and a ROM declaring any release loads. Items 2, 3 and 11 now come from a
+> generated `romwbw_ver.inc` in *both* repositories, and
+> `tools/check_source_drift.sh` asserts the two `emu_hbios.asm` copies are
+> byte-identical. Every row in the table above is now either a read of item 10
+> or generated from `versions/<ver>/version.json`; not one is hand-copied.
+> Why a release number was the wrong thing to gate on is in
+> [INTERFACE_V0.md](INTERFACE_V0.md) and `romwbw_emu/docs/RELEASE_GATE.md`.
 
 Measured in the ROMs this repository builds, at `0x100`:
 

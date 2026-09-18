@@ -20,12 +20,15 @@ one source builds a ROM for any RomWBW release, and the two places the version
 appears — the HCB at `0x105`/`0x106` and the proxy ident block at `0xFE02` —
 cannot drift from each other or from the published catalog.
 
-In `romwbw_emu` these are still two hand-copied `db 035h` pairs, because um80
-cannot `#include` a C header. It can `include` an assembly file, which is what
-this uses. `romwbw_emu/roms/verify_romwbw_pin.sh` no longer checks them against
-a compile-time pin — as of v1.39 that core has none, and the script instead
-asks whether each built artifact names a RomWBW release the core can run, and
-whether the ROMs and disks in a tree pair up.
+In `romwbw_emu` these were two hand-copied `db 035h` pairs until v1.44, because
+um80 cannot `#include` a C header — it can `include` an assembly file, which is
+what this uses. That tree generates the same `romwbw_ver.inc` now, so its copy
+of `emu_hbios.asm` is byte-identical to this one and
+`tools/check_source_drift.sh` asserts plain equality.
+`romwbw_emu/roms/verify_romwbw_pin.sh` keeps its name and checks what is left:
+the HCB marker, `CB_PLATFORM`, and whether the ROMs and disks in a tree pair up.
+It checked artifacts against a compile-time pin until v1.39 and against a
+release allowlist until v1.44; neither exists.
 
 ## Do not remove the duplicate ident pointer
 

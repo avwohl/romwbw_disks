@@ -4,6 +4,9 @@ What each client has to change to consume the interface-v0 catalog, and in what
 order. The artifacts are published as of 2026-09-04, the emulator blocker was
 cleared on 2026-09-05 (`romwbw_emu` v1.39), and **all three clients were
 migrated the same day** — see "Suggested order" for what each commit carries.
+The last piece landed on 2026-09-17: `romwbw_emu` v1.44 deleted the release
+allowlist the migration had been written around, and all three clients deleted
+the per-entry filter that consumed it.
 
 **None of it has been compiled.** The migration was written on a Linux machine
 with no Xcode, no Android SDK or NDK, and no MSVC or Windows. What could be
@@ -17,7 +20,7 @@ and [CATALOG_SCHEMA.md](CATALOG_SCHEMA.md) for the documents themselves.
 ## The blocker: done
 
 Everything below is distribution plumbing and can be done incrementally. One
-thing could not, and it is now finished.
+thing could not, and it is now finished — in two steps, v1.39 and v1.44.
 
 `emu_validate_rom_hcb` compared the loaded ROM's HCB bytes at `0x105`/`0x106`
 against the compile-time `ROMWBW_PIN_VER_BYTE` / `ROMWBW_PIN_UPD_BYTE` from
@@ -32,7 +35,7 @@ emulated RAM at all:
 
 | Site | What it does now |
 |---|---|
-| `emu_init.cc` `emu_validate_rom_hcb` | refuses only a release the core has never been run against, naming the supported list; `--allow-untested-romwbw` overrides |
+| `emu_init.cc` `emu_validate_rom_hcb` | checks size, the `57 A8` marker and `CB_PLATFORM`. Between v1.39 and v1.44 it also refused a release absent from `ROMWBW_SUPPORTED_RELEASES`; that branch is gone |
 | `hbios_dispatch.cc` `HBF_SYSVER` | returns the loaded ROM's bytes — this is what the guest CBIOS compares against |
 | `hbios_dispatch.cc` `recalcNvramChecksum` | seeds from the loaded ROM's version bytes |
 | `emu_init.cc` `emu_setup_hbios_ident` | HBIOS ident block, written into RAM |
@@ -49,42 +52,72 @@ generated `romwbw_ver.inc` (`src/emu_hbios.asm:9`, written by
 `tools/build_rom.sh:50` out of `versions/<ver>/version.json`), so bank 0 was
 never a place the pin had to be edited.
 
+**`romwbw_emu` v1.44 (2026-09-17) removed the second gate, and
+`src/romwbw_pin.h` entirely.** A ROM whose HCB declares any release loads. The
+reasoning is in `romwbw_emu/docs/RELEASE_GATE.md` and, from this side, in
+[INTERFACE_V0.md](INTERFACE_V0.md): a RomWBW release number is the
+HBIOS-to-CBIOS pairing, not a statement about the emulator-to-ROM interface,
+and that interface is versioned by this catalog's own name. The replacement for
+the allowlist is `tools/boot_test.sh` at publish time — an entry in a v0 index
+is the assertion that the release booted.
+
+**This was a compile break, not a filter that could lag.** Every client called
+the deleted functions from source it compiles out of a sibling checkout, so the
+three client commits below are the same day's work, not a follow-up.
+
 ### The API a client uses now
 
-`ROMWBW_PIN_STR` and friends no longer exist. `emu_init.h` offers instead:
+`ROMWBW_PIN_STR` and friends no longer exist, and neither does
+`src/romwbw_pin.h`. `emu_init.h` offers:
 
 | Call | Use |
 |---|---|
-| `emu_romwbw_supported_list()` | `"3.5.1, 3.6.0"` — for an About screen shown before any ROM is loaded |
 | `emu_romwbw_release_loaded(mem, &r)` | the release actually running, once a ROM is in memory |
 | `emu_romwbw_release_of_image(buf, n, &r)` | inspect a downloaded image before offering it in a picker |
 | `emu_romwbw_release_str(r, buf, n)` | `"3.6.0"` for display |
-| `emu_romwbw_release_supported(r)` | can this build boot it? |
 
 `emu_romwbw_release_of_image()` is the useful one for a download UI: it answers
 from the first 264 bytes, so a client can check an image it has just fetched
-without loading it into the emulator.
+without loading it into the emulator. It is how a client that bundles one ROM
+tells which disk images pair with it.
 
-## Interim posture: filter, do not choose — still, for now
+Deleted in v1.44, so a tree that still calls one does not compile:
+`emu_romwbw_supported_list()` (it fed an About screen), and
+`emu_romwbw_release_supported(r)` — "can this build boot it?", a question with
+only one answer now. `emu_set_allow_untested_romwbw()`,
+`emu_allow_untested_romwbw()`, the `--allow-untested-romwbw` flag and the
+`RomWBW releases this build can run:` line on `--version` went with them.
 
-The emulator can load either release. **No released client contains that
-emulator yet**, and each ships one bundled ROM. So until a client rebuilds:
+## What a client offers now: everything the index lists
 
-1. fetch `index-v0.json`
-2. keep only entries whose `hbios.ver_byte` and `hbios.upd_byte` match the
-   version it was compiled for
-3. use that entry's `catalog_url`
+**Offer the whole list.** Every release in a v0 index was booted against the
+emulator before it was published (`tools/boot_test.sh`, made required by
+[RELEASING.md](RELEASING.md) §5), so there is nothing for a client to screen
+out on its core's behalf. A release this family's core could not service would
+be published as `index-v1.json`, which a v0 client never opens.
 
-It can do that without downloading a catalog, let alone a 512 KB ROM. If the
-list comes back empty, that is a real condition worth reporting — it means this
-repo has stopped publishing the RomWBW version that build can run.
+That is the posture as of 2026-09-17 in all three GUI clients — z80cpmw
+`39e2f07`, ioscpm `efa01a8`, cpmdroid `3e5d2af` — each of which deleted a
+per-entry `emu_romwbw_release_supported()` call rather than repointing it.
 
-Once a client is rebuilt on v1.39 or later, the same code offers the whole list
-instead — and should ask the core rather than assume, since a client can now be
-newer or older than the core it compiles: keep an entry when
-`emu_romwbw_release_supported({ver_byte, upd_byte})` says yes. Hardcoding
-"offer everything" would break the moment this repo publishes a release the
-client's core has not been checked against.
+Two things this does **not** license:
+
+- **Hardcoding "offer everything" while bundling one ROM.** A client that ships
+  a 3.5.1 `emu_avw.rom` and offers 3.6.0 disk images is offering a mismatched
+  pair, and the guest says so at boot. Until a client fetches its ROM from the
+  catalog, `hbios.ver_byte` / `hbios.upd_byte` are how it keeps the two in step
+  — that is what those bytes are for, and they keep that job.
+- **Assuming installed builds caught up.** A binary built before 2026-09-17
+  still filters by release and will not show a new RomWBW version to its user
+  until it is rebuilt and shipped. Nothing published here changes that, and it
+  is why this repository does not count a release as reaching users the moment
+  the index moves.
+
+The posture this section used to describe — "keep only entries whose
+`hbios.ver_byte` and `hbios.upd_byte` match the version it was compiled for",
+then "ask the core per entry" — was written when the emulator carried first a
+pin and then an allowlist. Both are gone; the recipe survives only as what a
+shipped older binary still does.
 
 ## Per-client work
 
@@ -236,14 +269,19 @@ client.
 ### romwbw_emu
 
 - ~~Make the pin runtime state (above). This is the whole feature.~~ **Done**,
-  v1.39. Along the way two things were found that had nothing to do with the
-  version and everything to do with why a wrong one could survive:
+  v1.39, and finished in v1.44, which deleted the allowlist that replaced the
+  pin and `src/romwbw_pin.h` with it. Along the way two things were found that
+  had nothing to do with the version and everything to do with why a wrong one
+  could survive:
   - `src/makefile` had **no header dependencies at all** (`%.o: %.cc` and
     nothing else), so editing `romwbw_pin.h` — the file whose entire job was to
     be the single source of truth about the RomWBW version — rebuilt nothing
     and left the old value compiled in, silently. `-MMD -MP` now records them.
   - `roms/verify_romwbw_pin.sh` was **never run by anything** — not `make
-    test`, not any CI job. `make -C src test` runs it now.
+    test`, not any CI job. `make -C src test` runs it now. It keeps its name
+    and half its job: since v1.44 it checks the HCB marker, `CB_PLATFORM` and
+    the ROM-to-disk-image pairing, and no longer checks a release against a
+    list.
 - `src/w8.asm`, `src/r8.asm`, `src/emu_hbios.asm` and `src/emu_rom.asm` now
   live in this repo. Removing them there breaks
   `disks/rebuild_disk_utils.sh:62-66`, `disks/verify_disk_utils.sh`,
@@ -297,11 +335,13 @@ for the family, and no client needs an assembler.
 ## Suggested order
 
 1. ~~**romwbw_emu:** make the pin runtime state.~~ **Done** (v1.39,
-   2026-09-05). Nothing user-visible yet — no released client carries it.
+   2026-09-05), and the allowlist it left behind deleted in v1.44
+   (2026-09-17). Nothing user-visible yet — no released client carries either.
 2. ~~**This repo:** publish, then leave it alone while clients catch up.~~
    **Done** (2026-09-04). `tools/boot_test.sh` was updated to ask the emulator
-   which releases it can run rather than assume one; it passes against both the
-   old and the new core.
+   which releases it could run rather than assume one; when v1.44 removed the
+   answer, the script stopped asking and now tests every published release
+   unconditionally. It is the release gate that replaced the allowlist.
 3. ~~**Each client, release A:** the storage/profile migration for versioned
    filenames.~~ **Written** 2026-09-05: `ioscpm` build 63
    (`CatalogMigration.swift`), `cpmdroid` 1.26 (`V0Migration.kt`), `z80cpmw`
@@ -315,9 +355,13 @@ for the family, and no client needs an assembler.
    trailing-slash inconsistency between the three clients is gone rather than
    reproduced.
 5. ~~**Each client, release C:** offer the RomWBW version list.~~ **Written**
-   the same day, filtered by `emu_romwbw_release_supported()` in all three
-   rather than by a hardcoded list, so a client that is older or newer than its
-   core still offers only what that core can boot.
+   2026-09-05, filtered by `emu_romwbw_release_supported()` in all three rather
+   than by a hardcoded list, so a client that was older or newer than its core
+   still offered only what that core would load. **The filter came back out on
+   2026-09-17** (z80cpmw `39e2f07`, ioscpm `efa01a8`, cpmdroid `3e5d2af`), when
+   `romwbw_emu` v1.44 deleted the function it asked: there is no release the
+   core refuses, so a filter could only hide a release the user could have
+   booted. All three now offer every entry the index lists.
 6. **Cleanup:** ~~the cpmdroid hot-patch~~, ~~`verify-disk-assets.sh`~~,
    ~~`romwbw_emu/disks/disks.xml`~~ and ~~the dev snapshot~~ — all deleted
    2026-09-05. **Not the duplicated Z80 sources**: listing them here was wrong.
@@ -335,10 +379,12 @@ arrives at the later build without ever running the earlier one still renames
 its files before a v0 name can land beside a pre-v0 one.
 
 **What is left is not writing but running.** No store build of any client
-exists, none of this has been compiled, and until a released client carries it
-3.6.0 was promoted to `"status": "stable"` on 2026-09-05 anyway, because a
-shipped client filters it out by `hbios.ver_byte` rather than by reading
-`status` — the bytes are the safety mechanism, not the label.
+exists and none of this has been compiled. 3.6.0 was promoted to
+`"status": "stable"` on 2026-09-05 without waiting for one, because a shipped
+client filtered it out by `hbios.ver_byte` rather than by reading `status` —
+the bytes were the safety mechanism, not the label. A client rebuilt today no
+longer filters by release, so `status` and `default` are what it reads; the
+bytes still pair its bundled ROM with the disk images it offers.
 
 ## What must never happen
 

@@ -132,7 +132,9 @@ The version is not written in the assembly. Before this repo it was two
 hand-copied `db 035h` pairs in `emu_hbios.asm`, kept in step with
 `romwbw_emu/src/romwbw_pin.h` by a separate verify script, because assembly
 cannot `#include` a C header. Now one source builds a ROM for any release and the
-copies cannot drift.
+copies cannot drift — and since `romwbw_emu` v1.44 that is true in both trees:
+its `emu_hbios.asm` generates the same include, `romwbw_pin.h` is deleted, and
+`tools/check_source_drift.sh` asserts the two copies are byte-identical.
 
 The stock-ROM HCB check is also the thing that stops a development snapshot being
 used as banks 1–15. `romwbw_emu/archive/romwbw-v3.6.0/SBC_simh_std_v360.rom` is a
@@ -304,6 +306,12 @@ Commit and push first. `gh release create` makes the git tag at the commit you
 name, so cut it from a pushed commit and put the commit in the release notes —
 that is the only link between an asset and the source that produced it.
 
+**And boot it.** `tools/boot_test.sh` is a required step, not a diagnostic:
+since `romwbw_emu` v1.44 no emulator and no client screens a release out, so
+publishing one into `index-v0.json` is this repository's assertion that it
+boots. Section 5 says what that covers and why it replaced a compile-time list;
+the §8 checklist has the exact invocation and the summary line to look for.
+
 ### The order is: version tags first, index last
 
 `index-v0.json` names each `catalog_url` along with its `catalog_sha256` and
@@ -451,17 +459,35 @@ lets an interrupted publish be finished.
 **A corrected artifact gets a new RomWBW version entry or a new interface
 version — never a silent replacement.** If upstream ships 3.5.2, that is a new
 `versions/3.5.2/` and a new `v0-romwbw-3.5.2` tag. If the contract itself has to
-change, that is `v1`: new release tags, a new index URL, and every v0 tag left
-untouched, as [INTERFACE_V0.md](INTERFACE_V0.md) describes.
+change, that is `v1`: new release tags, `index-v1.json` published **beside**
+`index-v0.json` on the release marked Latest, and every v0 tag left untouched.
+Not a new index URL — a new URL is unreachable from a client with the old one
+compiled in, which is the mistake [INTERFACE_V0.md](INTERFACE_V0.md) records
+under "When to bump to v1".
 
-**A new RomWBW version has a `romwbw_emu` side, and it comes before the tag.**
-Since `romwbw_emu` v1.39 the core carries no compile-time version pin, but it
-does carry a list: `emu_validate_rom_hcb` refuses by name any release not in
-`ROMWBW_SUPPORTED_RELEASES` (`romwbw_emu/src/romwbw_pin.h`). A newly built
-3.7.0 ROM will not load anywhere until an `X()` line is added there, and that
-line is a claim that somebody booted the release — so boot it first
-(`tools/boot_test.sh 3.7.0`), then add the line. Publishing a version no core
-will load is how you ship 234 MB nobody can use.
+**A new RomWBW version has no `romwbw_emu` side any more, and that is exactly
+why the boot test is required.** Until 2026-09-17 the core carried a
+hand-edited allowlist — `ROMWBW_SUPPORTED_RELEASES` in `src/romwbw_pin.h` —
+and a newly built 3.7.0 ROM would not load anywhere until a line was added,
+which meant a release of every client before a release here. `romwbw_emu` v1.44
+deleted that list and the header with it; a ROM declaring any release loads.
+
+**So `tools/boot_test.sh` is the gate, it is required, and it runs before the
+tag.** Run it against the populated `build/` for the version you are about to
+publish (`tools/boot_test.sh 3.7.0`, and the §8 checklist runs it over all of
+them). It boots the exact ROM and image being published and asserts the CBIOS
+banner, the CP/M prompt, no mismatch warning on a matched pair, the warning on
+a mismatched one, and an `R8`/`W8` round trip. It has no refusal branch: a ROM
+that does not boot is a failure, not a release the emulator was entitled to
+decline.
+
+**Publishing into `index-v0.json` is the assertion that it passed**
+([INTERFACE_V0.md](INTERFACE_V0.md)). A client no longer screens entries on its
+core's behalf, so nothing downstream will catch a release that was published
+untested — it will simply be offered, downloaded, and booted. A release this
+family's core genuinely could not service is not published into the v0 index at
+all; it goes into `index-v1.json` beside it, which no v0 client opens.
+Publishing a version nothing can boot is how you ship 234 MB nobody can use.
 
 ### Correcting a version that is already published
 
@@ -694,12 +720,15 @@ both were taken here deliberately rather than together by habit.
 
 Note what promotion did NOT wait for, because it is the interesting part: no
 released client carries that core, so no shipped build can boot a 3.6.0 ROM.
-That is safe because a client filters the index by `hbios.ver_byte` /
-`hbios.upd_byte` against what its own core can run, so 3.6.0 never survives the
-filter on a pre-v1.39 build. `status` is advice for a client that CAN boot a
-release; the version bytes are what stop one that cannot. A client reads that
-status out of the index. It does not, and must not,
-infer anything from a GitHub badge. Encoding the same fact in two places is how ioscpm ended up with four
+That was safe because such a client filtered the index by `hbios.ver_byte` /
+`hbios.upd_byte` against the release its own core was built for, so 3.6.0 never
+survived the filter on a pre-v1.39 build. That filter is gone as of 2026-09-17
+in all three GUI clients, and `romwbw_emu` v1.44 refuses no release, so
+`status` now carries more weight than it did: it is read by a client that will
+offer whatever the index lists. Set it honestly, and leave a release `preview`
+until `tools/boot_test.sh` has booted it. A client reads that status out of the
+index. It does not, and must not, infer anything from a GitHub badge.
+Encoding the same fact in two places is how ioscpm ended up with four
 documents describing a flag that was never set.
 
 The script does set the flag — `[ "$status" = "stable" ] || prerelease="--prerelease"`
@@ -883,19 +912,22 @@ Do not:
 **3.6.0 has been run, and the `proto.asm` task was never possible as written.**
 There is no `Source/HBIOS/proto.asm` in any RomWBW release; both places that
 demanded one — `romwbw_emu`'s `src/romwbw_pin.h` and `DOWNSTREAM.md` — have
-been rewritten, and `DOWNSTREAM.md` now says so outright. What was done instead
-on 2026-09-05: under `romwbw_emu` v1.39, 3.6.0 boots CP/M 2.2, banked CP/M 3,
+been rewritten, `DOWNSTREAM.md` says so outright, and `romwbw_pin.h` was
+deleted entirely in v1.44. What was done instead on 2026-09-05: under
+`romwbw_emu` v1.39, 3.6.0 boots CP/M 2.2, banked CP/M 3,
 ZPM3, Z3PLUS, ZSDOS and NZCOM from the images published here, `R8`/`W8`
 round-trip a file byte-identically, and the boot loader prints
 `NV Switches Found`.
 
 Be precise about what is machine-checked. `tools/boot_test.sh` asserts the
-CP/M 2.2 half, for every release the emulator says it can run: the combo image
+CP/M 2.2 half, for every release this repository publishes: the combo image
 boots, the `CBIOS v<ver> [WBW]` banner appears, the CP/M prompt is reached, the
 emulator reports the release it read from the ROM, a disk from another release
-warns, and `R8`/`W8` round-trip a file byte-identically. The other five
-operating systems and the NVRAM check were run by hand on 2026-09-05 and are
-not re-run by any script.
+warns, and `R8`/`W8` round-trip a file byte-identically. It asked the binary
+which releases it would accept until `romwbw_emu` v1.44 removed the answer;
+every published release is now tested unconditionally, with no branch in which
+a failure to boot is a pass. The other five operating systems and the NVRAM
+check were run by hand on 2026-09-05 and are not re-run by any script.
 
 Still not done: a function-by-function read of 3.6.0's `hbios.asm` against the
 emulator's dispatcher. See [ROMWBW_VERSIONS.md](ROMWBW_VERSIONS.md).
@@ -904,9 +936,12 @@ emulator's dispatcher. See [ROMWBW_VERSIONS.md](ROMWBW_VERSIONS.md).
 evidence rather than on a shipped client: `romwbw_emu` v1.39 boots it and
 `tools/boot_test.sh` asserts the boot, the banner, the absence of a mismatch
 warning and an R8/W8 round trip on every run. No released client carries that
-core, and that is deliberately not a blocker — a shipped client filters 3.6.0
-out by `hbios.ver_byte`, so the entry is invisible to the builds that could not
-boot it. `"default"` moved to 3.6.0 on the same day.
+core, and that was deliberately not a blocker — a shipped client filtered 3.6.0
+out by `hbios.ver_byte`, so the entry was invisible to the builds that could
+not boot it. `"default"` moved to 3.6.0 on the same day. Since 2026-09-17 a
+rebuilt client does not filter at all, so that particular cover is gone for
+anything published from here on; the boot test before publication is what
+replaces it.
 
 **What `default` on 3.6.0 exposes.** No client downloads a ROM yet - each
 bundles a 3.5.1 `emu_avw.rom` - so a client that shipped today would preselect

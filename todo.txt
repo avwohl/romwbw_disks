@@ -12,36 +12,31 @@ every line of it is done: the two-level catalog exists and is published, disk
 and ROM filenames carry the interface and the RomWBW release, 3.5.1 and 3.6.0
 are both built and verified, w8.com/r8.com/emu_hbios.asm/emu_rom.asm live in
 src/, and all three GUI clients were migrated on 2026-09-05.  Its last question
-is answered under [ANY] below.
-
-- [ANY] MAKE tools/boot_test.sh THE GATE, so romwbw_emu can delete its
-compile-time one.  docs/INTERFACE_V0.md already says adding RomWBW 3.7.0 needs no
-client change and no interface bump.  That is false today, and the only reason is
-ROMWBW_SUPPORTED_RELEASES in romwbw_emu/src/romwbw_pin.h - a hand-edited macro
-adjudicating the very release bytes tools/build_rom.sh writes into the HCB.
-  The replacement is publishing discipline, not another list: a release enters
-the v0 index only after boot_test.sh passes against the v0 proxy, and a release
-that cannot goes to index-v1.json beside index-v0.json on the release marked
-Latest, where v0 clients never see it.  That gate already exists in this repo, it
-already asserts the CBIOS banner, the CP/M prompt, both mismatch cases and an
-R8/W8 round trip, and unlike the macro it runs against the artifact actually
-being published.
-  Needs docs/RELEASING.md to make the run required, and docs/INTERFACE_V0.md to
-say that publishing into the v0 index IS the assertion that it passed.  Do it
-BEFORE romwbw_emu cuts the gate.  The whole argument is
-romwbw_emu/docs/RELEASE_GATE.md.
-  One gap that section must state rather than paper over: v0's pillar 3 covers
-the private 0xE1-0xEA block and two standard functions, not the full set of
-standard HBIOS functions the dispatcher implements.  A release whose CBIOS calls
-a standard function romwbw_emu lacks is not caught by v0 as written, and
-boot_test.sh is what has to catch it.
+- whether publishing a RomWBW release could ever stop requiring an application
+release - was answered on 2026-09-17 and its item is gone from below.
+tools/boot_test.sh is the gate: it tests every published release with no refusal
+branch, romwbw_emu v1.44 deleted ROMWBW_SUPPORTED_RELEASES and src/romwbw_pin.h,
+and all three GUI clients dropped the matching per-entry filter the same day
+(z80cpmw 39e2f07, ioscpm efa01a8, cpmdroid 3e5d2af).  docs/INTERFACE_V0.md
+carries the reasoning and docs/RELEASING.md makes the boot test required.  The
+one caveat is not a contract problem: a client binary built before that date
+still filters, and hides a new release from its user until it is rebuilt.
 
 - [ANY] 0x0406 in HBX_BNKCALL is a 3.5.1 constant living in bank 0, which this
-repo builds per release - it belongs in romwbw_ver.inc beside the version bytes
-tools/build_rom.sh already generates.  Not blocking the item above.  Any
-emu_hbios.asm edit moves every published ROM's sha256 and bumps every version's
-generation, which costs every user a re-download, so ride this along with the
-next bank-0 change rather than cutting it on its own.
+repo builds per release - it could go in romwbw_ver.inc beside the version bytes
+tools/build_rom.sh already generates.  Any emu_hbios.asm edit moves every
+published ROM's sha256 and bumps every version's generation, which costs every
+user a re-download, so ride this along with the next bank-0 change rather than
+cutting it on its own.
+  Two measurements from 2026-09-17 that argue for leaving it where it is, both
+in romwbw_emu/docs/RELEASE_GATE.md.  Upstream 3.6.0's romldr.asm contains no
+reference to $0406 at all, so the special case is live under 3.5.1 and inert
+under 3.6.0 rather than wrong under 3.6.0.  And it has a second half nothing had
+named: handlePRTSUM in romwbw_emu/src/hbios_cpu.cc, C++ compiled into every
+client, which a generated assembler include could never reach - so
+parameterising the bank-0 copy would leave the constant in two places with one
+of them still hardcoded.  romwbw_emu decided to leave it alone; if this repo
+ever does it anyway, do both halves or neither.
 
 - [WINDOWS + MAC + ANDROID] NONE OF THE CLIENT MIGRATION HAS BEEN COMPILED, and
 that is the largest open item anywhere in this family.  ioscpm builds 63-65,
@@ -190,10 +185,12 @@ check red.  romwbw_emu holds the matching "do not delete these" rule in its own
 .claude/CLAUDE.md, which is where it belongs - what is recorded here is only
 this repository's dependency on them.
   Having the same file in two repositories is the price of the two building
-independently.  check_source_drift.sh compares them on every push: three are
-byte-identical, and emu_hbios.asm differs only by taking its version from the
-generated romwbw_ver.inc.  Since fe08145 the check assembles BOTH trees'
-emu_hbios.asm and compares the 32 KB bank 0 rather than a built ROM, so it no
-longer depends on romwbw_emu tracking an artifact - which it has not since
-v1.40.
+independently.  check_source_drift.sh compares them on every push, and since
+romwbw_emu v1.44 parameterised its emu_hbios.asm all four are byte-identical -
+plain equality, where the check used to assert that emu_hbios.asm differed by
+the romwbw_ver.inc parameterisation and nothing else.  That is strictly
+stronger, and it immediately caught a comment that had drifted.  Since fe08145
+the check also assembles BOTH trees' emu_hbios.asm and compares the 32 KB bank 0
+rather than a built ROM, so it no longer depends on romwbw_emu tracking an
+artifact - which it has not since v1.40.
 

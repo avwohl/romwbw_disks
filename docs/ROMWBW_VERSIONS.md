@@ -68,11 +68,14 @@ per-version catalog JSON and legacy XML that ship alongside them add about
 19 KB and 23 KB respectively.
 
 3.6.0 was promoted from `preview` to `stable` on 2026-09-05, once `romwbw_emu`
-v1.39 could boot it, and `default` moved to it the same day. A shipped client is
-not endangered by either — it filters the index by `hbios.ver_byte` against what
-its own core runs, so 3.6.0 never survives that filter on a pre-v1.39 build. What
-`default` does oblige is that a client's bundled ROM move to 3.6.0 before it
-ships; see below. See [INTERFACE_V0.md](INTERFACE_V0.md) and
+v1.39 could boot it, and `default` moved to it the same day. A shipped client
+was not endangered by either — it filtered the index by `hbios.ver_byte`
+against the release its own core was built for, so 3.6.0 never survived that
+filter on a pre-v1.39 build. That filter is gone from all three GUI clients as
+of 2026-09-17, which changes what the promotion means rather than whether it
+was safe: a rebuilt client offers 3.6.0 because the index lists it. What
+`default` obliges is unchanged — a client's bundled ROM has to move to 3.6.0
+before it ships; see below. See [INTERFACE_V0.md](INTERFACE_V0.md) and
 [CLIENT_MIGRATION.md](CLIENT_MIGRATION.md).
 
 ## How a RomWBW version is represented here
@@ -138,13 +141,18 @@ preprocessor macros, and `um80` needs it as an assembler `equ`. `um80` cannot
 value used by both had to be written twice and reconciled by something
 outside either language. The verify script was the reconciliation.
 
-`romwbw_emu` v1.39 removed the C side of that problem rather than reconciling
-it: the guest-visible version is read out of the loaded ROM, so there is no
-compile-time version left to disagree with the assembly. The two `db 035h`
-pairs in its `emu_hbios.asm` are still hand-copied, because that file is the
-bank-0 proxy for the release that tree's own artifacts are cut from. What
-`verify_romwbw_pin.sh` checks now is that every artifact in a tree names a
-release the core is checked against, and that the ROMs and disks pair up.
+**Both copies are gone now, and the last one went on 2026-09-17.**
+`romwbw_emu` v1.39 removed the C side rather than reconciling it: the
+guest-visible version is read out of the loaded ROM, so no compile-time version
+was left to disagree with the assembly — except the allowlist
+`ROMWBW_SUPPORTED_RELEASES`, which v1.44 deleted along with
+`src/romwbw_pin.h` itself. v1.44 also parameterised that tree's
+`emu_hbios.asm`: the two `db 035h` pairs are `RMV_VER` / `RMV_UPD` from a
+generated `romwbw_ver.inc` there as well, so the file is byte-identical to this
+repository's copy and `tools/check_source_drift.sh` asserts plain equality
+rather than a documented difference. `verify_romwbw_pin.sh` keeps its name and
+checks the HCB marker, `CB_PLATFORM`, and that a tree's ROMs and disk images
+pair up — the axis that is real.
 
 This repo removes the shared-value problem instead of checking it: the number
 lives in JSON, which both a shell script and Python can read, and the `.inc`
@@ -367,8 +375,9 @@ precisely, because what closed it was measurement rather than a source diff.
 ### What was open
 
 Two places in `romwbw_emu` listed a `proto.asm` diff as required work before
-adopting a new RomWBW release — `src/romwbw_pin.h` and `DOWNSTREAM.md`. Both
-named a file that is not there. RomWBW ships no `proto.asm` anywhere, in any
+adopting a new RomWBW release — `src/romwbw_pin.h` (deleted outright in v1.44)
+and `DOWNSTREAM.md`. Both named a file that is not there. RomWBW ships no
+`proto.asm` anywhere, in any
 release — not in `Source/HBIOS/`, not in the release tree at all; the only
 "proto" paths in the whole tag are the CH376 driver's `protocol.c` and
 `protocol.h`. The files that carry that information are
@@ -377,7 +386,9 @@ release — not in `Source/HBIOS/`, not in the release tree at all; the only
 been rewritten to describe booting the release instead.
 
 And the runtime could not be checked at all from a released client, because
-the emulator refused to load a 3.6.0 ROM.
+the emulator refused to load a 3.6.0 ROM. It refuses no release now; see
+"A release number was never the axis this core depends on" in
+[INTERFACE_V0.md](INTERFACE_V0.md).
 
 ### What was done
 
@@ -398,8 +409,10 @@ emulator answers, and that whole function block is ours, not RomWBW's.
 
 `tools/boot_test.sh` now asserts the boot, the banner, the absence of a
 mismatch warning, the reported release and the R8/W8 round trip for **every**
-release the emulator says it can run, so this does not have to be redone by
-hand.
+release this repository publishes, so this does not have to be redone by hand.
+It used to ask the binary which releases it would accept and hold it to that
+answer; since `romwbw_emu` v1.44 there is nothing to ask, and a ROM that does
+not boot is a failure rather than a possible correct refusal.
 
 ### What is still not known
 
@@ -417,12 +430,21 @@ changed is the emulator, not a client: `romwbw_emu` v1.39 reads the version out
 of the loaded ROM, boots this release, and `tools/boot_test.sh` asserts it on
 every run.
 
-**No released client carries that core**, and that is not the blocker it looks
-like. A user cannot be offered 3.6.0 by a build that cannot boot it, because a
-client keeps only the index entries whose `hbios.ver_byte` / `hbios.upd_byte`
-its own core supports; on a pre-v1.39 build 3.6.0 is filtered out before any
-status is read. The 234 MB download that would end in a refusal is prevented by
-the version bytes, not by the label.
+**No released client carries that core**, and that was not the blocker it
+looked like. A user could not be offered 3.6.0 by a build that could not boot
+it, because such a client kept only the index entries whose `hbios.ver_byte` /
+`hbios.upd_byte` matched the release its own core was built for; on a pre-v1.39
+build 3.6.0 was filtered out before any status was read. The 234 MB download
+that would have ended in a refusal was prevented by the version bytes, not by
+the label.
+
+That refusal no longer exists — `romwbw_emu` v1.44 loads a ROM declaring any
+release, and the three GUI clients dropped the filter the same day — so what
+protects a user now is the other half, and it is the half that always mattered:
+the bytes pair a ROM with its disk images, and a mismatched pair still earns
+`*** WARNING: HBIOS/CBIOS Version Mismatch ***` from the guest. Every release
+in the index has been booted by `tools/boot_test.sh` before publication, which
+is what makes offering the whole list safe.
 
 `"default": true` moved to 3.6.0 on the same day, and it exposes the one piece
 of version-coupled state left in the clients: **none of them downloads a ROM
@@ -450,6 +472,13 @@ were next re-cut, at `generation: 2`. It now reads "Promoted out of preview
 2026-09-05. romwbw_emu v1.39 reads the RomWBW version out of the loaded ROM
 instead of a compile-time pin".
 
+That published note is itself a release behind as of 2026-09-17: it ends by
+saying a shipped client "filters this entry out by hbios.ver_byte", which is
+still true of binaries built before that date and is no longer how a current
+client behaves. Same rule applies — it is not corrected in place, and the
+wording in `versions/3.6.0/version.json` is updated when 3.6.0's assets are
+next re-cut for a reason of their own.
+
 ## The dev-snapshot trap
 
 This one deserves its own section because it is the failure that produces a
@@ -471,12 +500,13 @@ Its HCB at offset `0x103` reads:
 That is byte-for-byte what the real v3.6.0 release ROM reads. RomWBW's packed
 version bytes have no field for a pre-release suffix, so `3.6.0-dev.46` and
 `3.6.0` are indistinguishable to any version-byte check. Every check in that
-family blesses it: `emu_validate_rom_hcb`
-(`romwbw_emu/src/emu_init.cc`), which since v1.39 accepts any release listed in
-`ROMWBW_SUPPORTED_RELEASES` and 3.6.0 is listed; the ROM pass of
-`romwbw_emu/roms/verify_romwbw_pin.sh`, which checks the HCB marker, the
-version bytes for membership in that same list, and `CB_PLATFORM` — nothing
-else; and this repo's own stock-ROM check at `tools/build_rom.sh:78-81`.
+family blesses it: `emu_validate_rom_hcb` (`romwbw_emu/src/emu_init.cc`), which
+since v1.44 accepts every release and checked only membership in a list before
+that; the ROM pass of `romwbw_emu/roms/verify_romwbw_pin.sh`, which checks the
+HCB marker and `CB_PLATFORM`; and this repo's own stock-ROM check at
+`tools/build_rom.sh:78-81`. Removing the release allowlist took nothing away
+from this defence, because the snapshot's bytes were in the list — a release
+number cannot tell a release from a snapshot of it.
 
 Splice its banks 1-15 into an emulator ROM and you get a 512 KB file that
 passes the HCB check, loads, and boots — carrying a December-2025 development
@@ -581,17 +611,21 @@ Substitute the real version number for `3.7.0` throughout.
 8. **Do the HBIOS dispatcher diff** — `Source/HBIOS/hbios.asm` and
    `Source/Doc/SystemGuide.md`. `romwbw_pin.h` and `DOWNSTREAM.md` used to
    call this the `proto.asm` diff; both were rewritten for `romwbw_emu` v1.39
-   and neither names that file now, because no RomWBW release contains it. It
-   is outstanding for 3.6.0 (see "What is still not known" above) and it is the
-   one piece of this that a build script cannot do for you. Doing it for 3.7.0
-   without having done it for 3.6.0 leaves the same gap.
+   and neither names that file now, because no RomWBW release contains it
+   (`romwbw_pin.h` itself was deleted in v1.44). It is outstanding for 3.6.0
+   (see "What is still not known" above) and it is the one piece of this that a
+   build script cannot do for you. Doing it for 3.7.0 without having done it
+   for 3.6.0 leaves the same gap.
 
-9. **Boot it, then teach `romwbw_emu` the release.** One binary boots any
-   release listed in `ROMWBW_SUPPORTED_RELEASES` (`romwbw_emu/src/romwbw_pin.h`)
-   and `emu_validate_rom_hcb` refuses anything else by name, so a freshly built
-   3.7.0 ROM will not load until an `X()` line is added with the date it was
-   checked. Add it only after `tools/boot_test.sh 3.7.0` passes — the list is a
-   claim that somebody ran the release, not that somebody built it.
+9. **Boot it. There is nothing to teach `romwbw_emu`.** One binary boots any
+   release whose ROM carries a readable HBIOS configuration block, so a freshly
+   built 3.7.0 ROM loads with no change anywhere else — no macro, no `X()`
+   line, no client rebuild. What used to be that macro is now
+   `tools/boot_test.sh 3.7.0` passing: the release enters the v0 index only
+   after it does, and an index entry is the claim that somebody ran the
+   release, not that somebody built it. If it cannot be made to pass, the
+   release does not go into `index-v0.json`; a release the core genuinely could
+   not service belongs in `index-v1.json`, which no v0 client opens.
 
 10. **Review the generated catalog before publishing.** `git diff` on
     `catalog/v0/3.7.0/catalog.json` and `catalog/v0/index.json` — both are
@@ -616,5 +650,6 @@ Substitute the real version number for `3.7.0` throughout.
     `catalog-v0` tag, and do not re-cut the version's immutable assets.
 
 Adding a RomWBW version is not an interface change. No `v0` to `v1` bump, no
-client rebuild, no change to any existing tag —
-[INTERFACE_V0.md](INTERFACE_V0.md) says what would require one.
+client rebuild, no change to any existing tag, and — since 2026-09-17 — no
+`romwbw_emu` change either: a release tag and a regenerated index here is the
+whole of it. [INTERFACE_V0.md](INTERFACE_V0.md) says what would require more.
