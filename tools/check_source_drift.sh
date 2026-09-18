@@ -110,17 +110,15 @@ else
 fi
 echo
 
-# --- the check that actually proves it --------------------------------------
-#
-# Same release, same bytes.  romwbw_emu is cut from 3.5.1, so that is the
-# release to compare at; if this repository has not built 3.5.1 there is
-# nothing to compare and saying so is the honest result.
-
 # --- the check that actually proves it ----------------------------------------
 #
-# Assembled output, not source text.  The structural check above says the two
-# copies differ in the documented way; only building both says the difference
-# is ALL there is.
+# Assembled output, not source text.  The equality check above says the two
+# copies are the same bytes; only building both says they also assemble the
+# same, which a different assembler version would break and no source
+# comparison would see.
+#
+# 3.5.1 is an arbitrary release to compare at, now that neither copy is cut
+# for one in particular.
 #
 # This used to compare romwbw_emu/roms/emu_avw.rom against this repo's built
 # ROM, and to cpmcp r8.com/w8.com out of romwbw_emu/disks/hd1k_combo.img.  Both

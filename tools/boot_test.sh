@@ -201,11 +201,15 @@ elif [ "$count" -eq 1 ]; then
     echo "This binary booted$(printf ' v%s' $booted) only."
 fi
 
-# Asserting nothing is not passing.  Every version can legitimately take the
-# refusal branch - that is a real run with real assertions - but if the loop
-# never examined a single version, `rc` is still 0 and the verdict below would
-# read PASS on an empty run.  That is the failure mode this catches: an empty
-# versions/, an unbuilt build/, or a bad version argument.
+# Asserting nothing is not passing.  If the loop never examined a single
+# version, `rc` is still 0 and the verdict below would read PASS on an empty
+# run.  That is the failure mode this catches: an empty versions/, an unbuilt
+# build/, or a bad version argument.
+#
+# This used to add "every version can legitimately take the refusal branch -
+# that is a real run with real assertions".  There is no refusal branch any
+# more: nothing may be refused, so a version that does not boot is a failure
+# and never a quiet pass.
 if [ "$examined" -eq 0 ]; then
     echo "FAIL: no version was examined - nothing in $BUILD to test" >&2
     rc=1
