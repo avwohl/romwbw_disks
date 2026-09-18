@@ -1,5 +1,5 @@
 {
-  "generation": 3,
-  "content_sha256": "0bb7bfb7e0fcf246f8743097462bdcf5a8f552959dd83ff6836ddae4224345f3",
-  "_comment": "Written by tools/gen_catalog.py. The generation only advances when content_sha256 changes, and never decreases; do not edit by hand. Clients compare it to decide whether to re-fetch this version's catalog."
+  "generation": 2,
+  "content_sha256": "8a9b4dd7b3bcd4cd5bef4dd68f3964377774dfb63178a532f57f97689dae43c3",
+  "_comment": "Written by tools/gen_catalog.py. The generation only advances when content_sha256 changes, and never decreases; do not edit by hand. iOS deletes downloaded images when it changes."
 }

@@ -133,7 +133,7 @@ size and hash, so they cannot be authored wrong.
 | `label` | string | Display string for a menu. `"RomWBW " + romwbw_version`, plus `" (development snapshot)"` when `prerelease` is true. **Do not parse it** — and do show it wherever you name the release, not only in the picker, because for a snapshot it is the surface that carries the warning. |
 | `status` | string | `"stable"` or `"preview"` today. Copied from `versions/<ver>/version.json`. Not a closed set — see §6. |
 | `default` | boolean | The version to select when the user has no preference. The index promises exactly one entry with `true`; `tools/verify_catalog.py` fails the release otherwise. |
-| `prerelease` | boolean | **Upstream does not call this a release.** `true` for a RomWBW development snapshot carried here deliberately; absent or `false` for a real release. A client MUST NOT offer a `prerelease` entry by default — hide it behind an explicit opt-in, a "show development snapshots" checkbox or equivalent. Never `true` on the `default` entry: `tools/check_committed.py` and `tools/verify_catalog.py` both refuse that combination. See §2.3.1 for why this is a boolean and `status` is not. |
+| `prerelease` | boolean | **Upstream does not call this a release.** `true` for a RomWBW development snapshot carried here deliberately; **absent** for a real release — read it with `.get()`/`optional`, never assume the key is there. It is emitted only when true so that a released version's catalog stays byte-identical to the one already on its immutable tag. A client MUST NOT offer a `prerelease` entry by default — hide it behind an explicit opt-in, a "show development snapshots" checkbox or equivalent. Never `true` on the `default` entry: `tools/check_committed.py` and `tools/verify_catalog.py` both refuse that combination. See §2.3.1 for why this is a boolean and `status` is not. |
 | `released` | string or null | Upstream release date, `YYYY-MM-DD`. `"2025-05-21"` for 3.5.1, `"2026-03-28"` for 3.6.0. Read with `.get()` (`tools/gen_catalog.py:276`), so null if a version file omits it. |
 | `hbios` | object | The version bytes for this release. See §2.4. |
 | `release_tag` | string | The immutable GitHub tag holding this version's assets, `v0-romwbw-<ver>`. |
@@ -260,7 +260,7 @@ One per RomWBW version, on that version's immutable release tag.
 | `romwbw_version` | string | The RomWBW release these assets are built for. `tools/verify_catalog.py:185-187` fails the release if this disagrees with where the index filed it. |
 | `generation` | integer | The catalog generation for this RomWBW version. See §4. |
 | `status` | string | Same value as the index entry's `status`. `"stable"`, `"preview"` and `"snapshot"` are in use; not a closed set — see §6. |
-| `prerelease` | boolean | Same value as the index entry's `prerelease`, carried here so a client holding only a per-release catalog still knows what it has. See §2.3.1. |
+| `prerelease` | boolean | Same as the index entry's `prerelease`, carried here so a client holding only a per-release catalog still knows what it has. Present only when true. See §2.3.1. |
 | `release_tag` | string | `v0-romwbw-<ver>`. |
 | `base_url` | string | Download prefix, **ending in `/`**. Asset URL is `base_url + filename`. |
 | `hbios` | object | Same shape and values as the index entry's `hbios`. See §2.4. |

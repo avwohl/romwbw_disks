@@ -1,5 +1,5 @@
 {
   "generation": 1,
-  "content_sha256": "9455610b2315f3ee30791cca52c3416014ebf4365b0f0352908d6b0865995412",
+  "content_sha256": "217b00dcd057d598492f04ff6e01d1c9fce1485c450b3ffe1fd1fc04e72df547",
   "_comment": "Written by tools/gen_catalog.py. The generation only advances when content_sha256 changes, and never decreases; do not edit by hand. Clients compare it to decide whether to re-fetch this version's catalog."
 }

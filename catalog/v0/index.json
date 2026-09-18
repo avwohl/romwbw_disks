@@ -71,7 +71,6 @@
       "label": "RomWBW 3.5.1",
       "status": "stable",
       "default": false,
-      "prerelease": false,
       "released": "2025-05-21",
       "hbios": {
         "major": 3,
@@ -84,9 +83,9 @@
       },
       "release_tag": "v0-romwbw-3.5.1",
       "catalog_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.5.1/catalog-v0-3.5.1.json",
-      "catalog_sha256": "7bb3f6c64c03dca93cb201b194a7aff9190cb94b881fc2e7179b858785cffb05",
-      "catalog_size": 11849,
-      "generation": 3,
+      "catalog_sha256": "942803d1ed67bcd8c6e0a9b730f9a08775618535b8e9affc58c56830839a78fd",
+      "catalog_size": 11826,
+      "generation": 2,
       "disks_xml_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.5.1/disks-v0-3.5.1.xml",
       "rom_count": 2,
       "disk_count": 20,
@@ -100,7 +99,6 @@
       "label": "RomWBW 3.6.0",
       "status": "stable",
       "default": true,
-      "prerelease": false,
       "released": "2026-03-28",
       "hbios": {
         "major": 3,
@@ -113,9 +111,9 @@
       },
       "release_tag": "v0-romwbw-3.6.0",
       "catalog_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.6.0/catalog-v0-3.6.0.json",
-      "catalog_sha256": "a3c4734ead1aa6b20f75413b1d19b33f724ea5a1a98d3eb8a0d3d9bc1d089ae6",
-      "catalog_size": 15085,
-      "generation": 3,
+      "catalog_sha256": "4b4de2967482ab3f218df0ca065a9bdb9998b895792b720b2be3cddc3a6edbb1",
+      "catalog_size": 15062,
+      "generation": 2,
       "disks_xml_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.6.0/disks-v0-3.6.0.xml",
       "rom_count": 2,
       "disk_count": 24,
@@ -131,7 +129,6 @@
       "label": "RomWBW 3.7.0-dev.14 (development snapshot)",
       "status": "snapshot",
       "default": false,
-      "prerelease": true,
       "released": "2026-09-08",
       "hbios": {
         "major": 3,
@@ -144,13 +141,14 @@
       },
       "release_tag": "v0-romwbw-3.7.0-dev.14",
       "catalog_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.7.0-dev.14/catalog-v0-3.7.0-dev.14.json",
-      "catalog_sha256": "b2961bdcb6d40c5a5d9290523dce58c32f0196a008146ea7a50d676bb4295e29",
+      "catalog_sha256": "127e60953c8bdf4339d048a23744dfef0eee1b372c672824ec36303685461365",
       "catalog_size": 13262,
       "generation": 1,
       "disks_xml_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.7.0-dev.14/disks-v0-3.7.0-dev.14.xml",
       "rom_count": 2,
       "disk_count": 22,
-      "notes": []
+      "notes": [],
+      "prerelease": true
     }
   ]
 }

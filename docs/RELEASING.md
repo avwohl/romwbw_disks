@@ -237,12 +237,12 @@ images for 3.5.1, 2 ROMs and 24 for 3.6.0, 2 ROMs and 22 for 3.7.0-dev.14.
 Including the three catalogs, the three legacy XML files and the index, all 79
 generated files match.
 
-One deliberate exception, 2026-09-18: `hd1k_combo` for 3.5.1 and 3.6.0 changed
-by 4608 bytes when the last cpmtools caller was replaced by
-`cpmemu/util/cpm_disk.py`, which pads the tail of a file's last block with
-`0x1A` where `cpmcp` used `0x00`. Directory entries and block allocation are
-identical; the images are byte-identical to each other's rebuilds from that
-commit on.
+No exception: replacing the last cpmtools caller with
+`cpmemu/util/cpm_disk.py` on 2026-09-18 kept every byte. It briefly did not -
+it padded a file's last block with `0x1A` where `cpmcp` used `0x00`, moving
+`hd1k_combo` by 4608 bytes - and that was corrected in `cpm_disk.py` rather
+than absorbed here, because absorbing it would have meant re-cutting two
+immutable tags to adopt a tool.
 
 Separately, `emu_avw-v0-3.5.1.rom` has
 

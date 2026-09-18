@@ -75,12 +75,16 @@ exactly that mistake.
 **The tree obeys this.** `tools/build_disks.sh` was converted on 2026-09-18 and
 `tools/diskdefs` is deleted; nothing here calls cpmtools and nothing needs it
 installed. Verified by rebuilding every artifact for all three carried versions
-on a machine with no cpmtools at all.
+on a machine with no cpmtools at all - **all 48 artifacts of 3.5.1 and 3.6.0
+come back byte-identical to the assets those tags already serve.**
 
-Only the injected image changed shape: `cpm_disk.py` pads the tail of a file's
-last block with `0x1A` where `cpmcp` used `0x00`, so `hd1k_combo` differs from
-its previous publication by exactly 4608 bytes, every one of them that padding.
-Directory entries and block allocation are identical.
+That byte-identity was not free, and it is the thing to preserve. `cpm_disk.py`
+padded a file's last block with `0x1A` where `cpmcp` used `0x00`, which changed
+`hd1k_combo` by 4608 bytes - functionally nothing, since the directory entry's
+record count is what bounds a file, but enough to make a rebuild differ from its
+own publication and to force a re-cut of two immutable tags to adopt the new
+tool. `cpmemu/util/cpm_disk.py` pads `0x00` for that reason, and its comment
+says so. Do not change it back.
 
 ## Snapshots are carried, deliberately and never as the default
 
@@ -130,6 +134,15 @@ any other; the item is filed in each of their `todo.txt`. So today the entry is
 VISIBLE in every client and merely not selected. `docs/CATALOG_SCHEMA.md` §2.3.1
 is the contract they will implement against. This is why guard 3 - never the
 default - matters more than the flag: it is the one that is actually running.
+
+**A BANK-0 CHANGE CANNOT TOUCH ONLY NEW VERSIONS.** `build_all.sh` rebuilds
+every carried version from the one `src/emu_hbios.asm`, so any change to it
+re-cuts 3.5.1 and 3.6.0 as well - whose tags are immutable and whose assets are
+already served. That is not a hypothetical: the ROM_SIG fix was applied on
+2026-09-18, everything rebuilt, and `publish_release.sh` refused the re-cut by
+name. The guard worked. Such a change lands only when the affected versions
+stop being carried, or with a `v1` bump that re-cuts everything by design;
+romwbw_emu `DECISIONS.md` #8 carries that one.
 
 **RETIRE THE SNAPSHOT WHEN ITS RELEASE SHIPS.** The day upstream cuts a real
 `v3.7.0`, the index would carry two entries whose `hbios` blocks are byte-

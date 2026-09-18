@@ -271,10 +271,6 @@ def build_catalog(ver):
         "romwbw_version": ver,
         "generation": catalog_generation(ver, disk_entries, rom_entries),
         "status": vmeta["status"],
-        # Carried here as well as in the index, so a client holding only a
-        # per-release catalog still knows what it has. See the index entry for
-        # why this is a boolean and `status` is not.
-        "prerelease": bool(vmeta.get("prerelease")),
         "release_tag": tag,
         "base_url": base_url,
         "hbios": vmeta["hbios"],
@@ -287,6 +283,14 @@ def build_catalog(ver):
         "roms": rom_entries,
         "disks": disk_entries,
     }
+    # PRESENT ONLY WHEN TRUE, and that is not tidiness. A real release's
+    # catalog has to stay byte-identical to the one already published on its
+    # immutable tag: adding "prerelease": false to 3.5.1 and 3.6.0 moved each
+    # document's sha256, which the index then names, and publish_release.sh
+    # refused the pair by name. docs/CATALOG_SCHEMA.md documents absent as
+    # meaning false, so omitting it costs a client nothing.
+    if vmeta.get("prerelease"):
+        cat["prerelease"] = True
 
     cpath = os.path.join(outdir, asset_name("catalog", ".json", ver))
     with open(cpath, "w") as f:
@@ -441,7 +445,6 @@ def build_index(versions):
             # is the only thing that separates them - "CBIOS v3.7.0-dev.14
             # [WBW]" against "CBIOS v3.7.0 [WBW]" - which is why the version
             # directory is named for the full upstream tag rather than 3.7.0.
-            "prerelease": bool(vmeta.get("prerelease")),
             "released": vmeta.get("released"),
             "hbios": vmeta["hbios"],
             "release_tag": tag,
@@ -454,6 +457,9 @@ def build_index(versions):
             "disk_count": len(cat["disks"]),
             "notes": vmeta.get("notes", []),
         })
+        # See the catalog above: present only when true.
+        if vmeta.get("prerelease"):
+            entries[-1]["prerelease"] = True
 
     idx = {
         "schema": "romwbw-disks-index",

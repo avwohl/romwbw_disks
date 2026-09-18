@@ -3,9 +3,8 @@
   "schema_version": 1,
   "interface": "v0",
   "romwbw_version": "3.6.0",
-  "generation": 3,
+  "generation": 2,
   "status": "stable",
-  "prerelease": false,
   "release_tag": "v0-romwbw-3.6.0",
   "base_url": "https://github.com/avwohl/romwbw_disks/releases/download/v0-romwbw-3.6.0/",
   "hbios": {
@@ -35,7 +34,7 @@
       "name": "EMU AVW",
       "description": "Standard emulator ROM. Our HBIOS proxy in bank 0 over the RomWBW SBC_simh_std ROM disk in banks 1-15. This is the ROM every shipped client bundles today.",
       "size": 524288,
-      "sha256": "b7ae224ae51568abd2e2e018fcb70df13b3bd3b35393a25f32c5b660e42b3239",
+      "sha256": "01d1ca6d142e9b757d4fd98c2229f2e506dd8c3253839391c8f5d4f6263c6557",
       "default": true,
       "hcb": {
         "marker": "57 A8",
@@ -54,7 +53,7 @@
       "name": "EMU RCZ80",
       "description": "Alternate emulator ROM. Same HBIOS proxy in bank 0, but banks 1-15 come from the RomWBW RCZ80_std ROM disk, so the ROM-resident applications match an RC2014 Z80 build.",
       "size": 524288,
-      "sha256": "214561fa4acb696b339734ca8da2cbfa7821446291b82df999d115512f18bf1a",
+      "sha256": "9b204cd71d1064d7f4a46d4403f106250e0e53f2239931a6f81aa7bc7dba5fc5",
       "default": false,
       "hcb": {
         "marker": "57 A8",
@@ -75,7 +74,7 @@
       "name": "Combo (Recommended)",
       "description": "Six-slice disk: CP/M 2.2, ZSDOS, NZCOM, CP/M 3, ZPM3 and a word-processing slice, plus R8/W8 host file transfer on slice 0. Best starter disk.",
       "size": 51380224,
-      "sha256": "e65c55d4a2eb7f3375b950c2dffb1fd7b85f03235c8c0803091afba2fd0bffb0",
+      "sha256": "f4873027b19a6834a19c8f496821bafb3852fce8320e837c338759c0f1f9dd22",
       "license": "Mixed",
       "format": "hd1k_combo",
       "bootable": true,
