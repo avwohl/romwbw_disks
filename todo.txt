@@ -3,4 +3,6 @@ does not - and that a closed item is DELETED rather than annotated - is in
 CLAUDE.md.  `sh tools/unreleased.sh` says whether anything committed here is
 still unpublished.  Each item is tagged with what a machine must have to take it.
 
-(empty)
+- [ANY] docs/CLIENT_MIGRATION.md has no step for the prerelease opt-in: the
+numbered plan stops at step 6 and "What a client offers now: everything the index
+lists" is now wrong for a snapshot entry.  CATALOG_SCHEMA.md 2.3 has the rule.
