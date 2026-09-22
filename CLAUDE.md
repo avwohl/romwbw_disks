@@ -128,12 +128,25 @@ out rather than assuming.
    release is refused too. `ALLOW_PRERELEASE=1` remains only for a local build
    of something this repo does not carry.
 
-**Clients must hide it behind an opt-in, and none does yet.** Measured
-2026-09-18: all four read this index and would list a `prerelease` entry like
-any other; the item is filed in each of their `todo.txt`. So today the entry is
-VISIBLE in every client and merely not selected. `docs/CATALOG_SCHEMA.md` §2.3.1
-is the contract they will implement against. This is why guard 3 - never the
-default - matters more than the flag: it is the one that is actually running.
+**Clients must hide it behind an opt-in, and one now does.** Measured
+2026-09-18 for the four emulator clients: all four read this index and would
+list a `prerelease` entry like any other; the item is filed in each of their
+`todo.txt`. So in those four the entry is VISIBLE and merely not selected.
+`docs/CATALOG_SCHEMA.md` §2.3.1 is the contract they will implement against,
+and since 2026-09-22 avwohl/z80fpga's `tools/romwbw_fetch.py` is a worked
+example of it: `pick()` drops `prerelease` entries from the pool a bare run may
+land on, `--prerelease` / `ROMWBW_PRERELEASE` is the opt-in, and naming an
+exact version still reaches a snapshot because naming it is itself the opt-in.
+
+Note that z80fpga is not a fifth consumer of `roms[]`. It is an FPGA Z80 whose
+SoC cannot run the emulator ROMs at all, so it reads the index and the
+catalog's top-level `upstream` object only, and extracts the stock
+`Binary/SBC_simh_std.rom` from the release package this repo pins by hash. The
+"all four clients" counts elsewhere in this repository are about `roms[]` and
+are right as they stand.
+
+Guard 3 - never the default - still matters more than the flag, because it is
+the one running in all five.
 
 **A BANK-0 CHANGE CANNOT TOUCH ONLY NEW VERSIONS.** `build_all.sh` rebuilds
 every carried version from the one `src/emu_hbios.asm`, so any change to it
