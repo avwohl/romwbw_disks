@@ -282,3 +282,7 @@ repository, which is what CI is for; what a release channel is serving is not.
 Four jobs asking that question across this family were deleted on 2026-09-13.
 No exit 1: 0 even when the catalog has moved and not been published, 2 only when
 it could not measure.
+
+## README stays short
+
+README.md is at most 150 lines. New detail goes in docs/<topic>.md with a one-line link from the README; never add sections to the README.
