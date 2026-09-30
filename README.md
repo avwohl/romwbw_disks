@@ -46,8 +46,9 @@ RomWBW. The tags, ROMs and disk images are described in
 
 ## Building
 
-Needs `um80` and `ul80` (`pip install um80`), `cpmtools`, `python3`, `curl` and
-`unzip`.
+Needs `um80` and `ul80` (`pip install um80`), `python3`, `curl`, `unzip` and a
+`cpmemu` checkout beside this repository (`CPMEMU=` overrides the path).
+cpmtools is not needed.
 
 ```sh
 tools/build_all.sh              # every RomWBW version

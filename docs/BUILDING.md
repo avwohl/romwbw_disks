@@ -4,8 +4,11 @@ How the ROMs and disk images are built, how `tools/boot_test.sh` proves them, an
 
 ## The build
 
-Needs `um80` and `ul80` (`pip install um80`), `cpmtools`, `python3`, `curl` and
-`unzip`. Downloads and extracts under `$ROMWBW_CACHE` (default `$HOME/esrc`),
+Needs `um80` and `ul80` (`pip install um80`), `python3`, `curl`, `unzip` and a
+`cpmemu` checkout beside this repository. `tools/build_disks.sh` reads and
+writes disk images with `cpmemu/util/cpm_disk.py`; set `CPMEMU=<path>` if the
+checkout lives elsewhere. cpmtools is not needed and must not be installed (see
+CLAUDE.md, "Do not use cpmtools"). Downloads and extracts under `$ROMWBW_CACHE` (default `$HOME/esrc`),
 deliberately outside the repo and shared between versions. `fetch_romwbw.sh`
 pulls only what a build needs out of each archive — the two stock ROMs and the
 generic hd1k images — because the full unpack would be about a gigabyte per

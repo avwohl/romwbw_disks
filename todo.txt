@@ -6,3 +6,7 @@ still unpublished.  Each item is tagged with what a machine must have to take it
 - [ANY] docs/CLIENT_MIGRATION.md has no step for the prerelease opt-in: the
 numbered plan stops at step 6 and "What a client offers now: everything the index
 lists" is now wrong for a snapshot entry.  CATALOG_SCHEMA.md 2.3 has the rule.
+
+- [ANY] .github/workflows/verify.yml full job still installs cpmtools and never
+clones cpmemu, so tools/build_disks.sh dies on the missing cpm_disk.py.  Fix:
+drop the apt-get cpmtools line and clone avwohl/cpmemu to ../cpmemu first.

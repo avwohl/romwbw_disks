@@ -6,8 +6,8 @@
 # Usage: tools/build_all.sh [romwbw-version ...]     (default: all)
 #
 # This is the whole pipeline.  Running it from a clean checkout on a machine
-# with um80, ul80, cpmtools and python3 reproduces the published release byte
-# for byte - which is the point of the repo: before it, the ROM and the disk
+# with um80, ul80 and python3, plus a cpmemu checkout beside it for
+# cpm_disk.py, reproduces the published release byte for byte - which is the point of the repo: before it, the ROM and the disk
 # images were binaries someone had built once, by hand, and the recipe lived
 # partly in prose.
 

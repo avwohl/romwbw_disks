@@ -19,7 +19,7 @@ Section 4 explains why the split exists.
 | Tool | Install | Needed for |
 |---|---|---|
 | `um80`, `ul80` | `pip install um80` | assembling `src/*.asm` |
-| `cpmcp`, `cpmrm`, `cpmls` | `brew install cpmtools` / `apt install cpmtools` | writing W8/R8 into CP/M directories |
+| `cpmemu/util/cpm_disk.py` | clone `cpmemu` beside this repository, or set `CPMEMU=` | writing W8/R8 into CP/M directories |
 | `python3` | system | catalog generation and verification |
 | `curl`, `unzip` | system | fetching upstream RomWBW packages |
 | `gh` | `brew install gh` / <https://cli.github.com> | publishing only, not building |
@@ -29,12 +29,12 @@ virtualenv to set up beyond `um80`.
 
 `need_tools` (`tools/common.sh:48`) prints the install line for anything not on
 `PATH`, and each stage calls it for what that stage needs: `um80`/`ul80` in
-`tools/build_utils.sh:20` and `tools/build_rom.sh:23`, `cpmcp`/`cpmrm`/`cpmls` in
+`tools/build_utils.sh:20` and `tools/build_rom.sh:23`, `python3` in
 `tools/build_disks.sh:24`, `gh` in `tools/publish_release.sh`. So a missing
-assembler fails in the first second. It is not a blanket preflight: `curl`,
-`unzip` and `python3` are never passed to it and fail at the point of use, and
-cpmtools is not checked until stage 4 — after the download — so on a fresh
-machine it is worth confirming all of them by hand before starting a 440 MB
+assembler fails in the first second. It is not a blanket preflight: `curl` and
+`unzip` are never passed to it and fail at the point of use, and
+`tools/build_disks.sh` does not look for the `cpmemu` checkout until stage 4 —
+after the download — so on a fresh machine it is worth confirming all of them by hand before starting a 440 MB
 build.
 
 You do **not** need cpmtools, and must not install it — CLAUDE.md, "Do not use
@@ -931,7 +931,8 @@ the specific mistake of publishing a rebuilt catalog without re-cutting the inde
 Build:
 
 - [ ] `um80 --version` and `ul80 --version` agree with each other; note the version.
-- [ ] `cpmcp`, `cpmrm`, `cpmls` on `PATH`.
+- [ ] A `cpmemu` checkout beside this repository (or `CPMEMU=` set), with
+      `util/cpm_disk.py` present.
 - [ ] `rm -rf build && tools/build_all.sh` exits 0 and ends with
       `PASS: every artifact matches its catalog entry`.
 - [ ] `tools/boot_test.sh` exits 0 **and** its last summary line names every
@@ -1041,7 +1042,8 @@ none of the three tracks a `.rom` at all. cpmdroid fetches through
 `MainWindow::downloadRomThenStart`. That is what closes the point of this repository — a new RomWBW
 version needs a release HERE and nowhere else — and `roms[]` was in every
 catalog from the start for it. What a *user* has installed is a different
-question that no tree can answer; see the README on measuring before claiming.
+question that no tree can answer; see CLAUDE.md, "Before claiming what is
+shipped".
 
 **How a promotion is done, since it is not a rebuild.** Edit `status` in
 `versions/<ver>/version.json`, run `tools/gen_catalog.py --index`, and publish
