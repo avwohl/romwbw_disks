@@ -12,8 +12,9 @@ name: verify
 #
 #   full   builds everything from the real upstream Package.zips and verifies
 #          every artifact against its catalog entry.  ~420MB of downloads, so
-#          it runs on demand and weekly rather than per push.  It clones the
-#          same src/ as quick: since romwbw_emu v1.40 tracks no ROM and no disk
+#          it runs on demand and weekly rather than per push.  It clones
+#          cpmemu's util/ for cpm_disk.py, and the same romwbw_emu src/ as
+#          quick: since romwbw_emu v1.40 tracks no ROM and no disk
 #          image, the drift check assembles what it compares.
 #
 # um80 is deliberately NOT pinned.  A um80 output change is meant to turn this
@@ -91,8 +92,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install um80
-          sudo apt-get update
-          sudo apt-get install -y cpmtools
+
+      # build_disks.sh writes the disk images with cpmemu's util/cpm_disk.py,
+      # the only copy in the family, reached from a sibling checkout - and no
+      # cpmtools is installed, because nothing here may call it.  Not pinned,
+      # for the same reason as romwbw_emu: if cpm_disk.py ever changes what it
+      # writes, the catalog diff below turns this red, which is the point.
+      - name: Fetch cpmemu for cpm_disk.py
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/avwohl/cpmemu.git ../cpmemu
+          git -C ../cpmemu sparse-checkout set util
 
       - name: Build everything and verify
         run: sh tools/build_all.sh
