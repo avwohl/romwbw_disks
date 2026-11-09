@@ -30,9 +30,11 @@ because the releases API is public and `gh` prints a 401 body to **stdout** on
 an expired token — which silently disabled that half of the guard for as long as
 it was gh-only.
 
-**`v3.7.0-dev.14` is carried**, since 2026-09-18, at the owner's decision. It is
+**`v3.7.0-dev.16` is carried**, since 2026-11-09. It replaced `v3.7.0-dev.14`,
+which was carried from 2026-09-18 at the owner's decision until upstream deleted
+its GitHub release. It is
 `prerelease: true`, `default: false`, `status: "snapshot"`, and lives at
-`versions/3.7.0-dev.14/` — named for the full tag so nothing it publishes can
+`versions/3.7.0-dev.16/` — named for the full tag so nothing it publishes can
 collide with a real 3.7.0. See CLAUDE.md, "Snapshots are carried, deliberately
 and never as the default", for the four guards that make it safe.
 
@@ -47,9 +49,10 @@ one-command answer:
 Published here:
   3.5.1            stable
   3.6.0            stable
+  3.7.0-dev.16     snapshot
 
-Upstream wwarthen/RomWBW (newest carried here: 2026-03-28):
-  v3.7.0-dev.14      2026-09-08  prerelease - carried, non-default
+Upstream wwarthen/RomWBW (newest carried here: 2026-10-24):
+  v3.7.0-dev.16      2026-10-24  prerelease - CARRIED HERE, non-default
   v3.6.0             2026-03-28  published here
   v3.5.1             2025-05-21  published here
   v3.5.0             2025-04-04  older, not carried
@@ -61,11 +64,13 @@ Upstream wwarthen/RomWBW (newest carried here: 2026-03-28):
 |---|---|---|---|---|---|---|
 | 3.5.1 | `v3.5.1` | 2025-05-21 | stable | `35 10` | 2 | 20 |
 | 3.6.0 | `v3.6.0` | 2026-03-28 | stable (default) | `36 00` | 2 | 24 |
+| 3.7.0-dev.16 | `v3.7.0-dev.16` | 2026-10-24 | snapshot, prerelease | `37 00` | 2 | 22 |
 
 `Package.zip` sha256, as pinned in `versions/<ver>/version.json`:
 
     3.5.1  e696ff2faf8f6420367ae3d0ad14c9daf1d7b08727b2699d005e877cc755da20
     3.6.0  bdf847d52cf6b4dd522fa81acf32e24c044ecb26f2d9ff8af72def9d6c41ffc2
+    3.7.0-dev.16  7e002669b2a4ce681e5c5f582cdb03be20f593eeecc3d670e1c3affa9f4784d9
 
 "HCB bytes" are the two packed version bytes RomWBW puts at file offsets
 `0x105` and `0x106` of a ROM, behind the marker `'W' 0xA8` at `0x103`/`0x104`.
@@ -579,10 +584,14 @@ not do it for you.
 
 ## Adding the next RomWBW release
 
-**RomWBW 3.7.0 has not been released.** As of 2026-09-04 upstream's newest
+**RomWBW 3.7.0 has not been released.** As of 2026-11-09 upstream's newest
 release is v3.6.0 and the 3.7 series exists only as prerelease development
-snapshots, the latest being `v3.7.0-dev.13`. Nothing 3.7 is published here, and
-`tools/fetch_romwbw.sh` will refuse to build from a snapshot.
+snapshots, the latest being `v3.7.0-dev.16`. That snapshot is carried here,
+non-default (see above). `tools/fetch_romwbw.sh` refuses any other snapshot
+unless its `version.json` declares `"prerelease": true`.
+
+When 3.7.0 releases, the snapshot retires in the same commit: delete
+`versions/3.7.0-dev.16/` and `catalog/v0/3.7.0-dev.16/` (CLAUDE.md says why).
 
 When 3.7.0 — or whatever comes next — actually releases, this is the whole
 procedure. It touches no client and does not bump the interface version.

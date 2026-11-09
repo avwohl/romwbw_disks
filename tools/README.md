@@ -34,20 +34,25 @@ mistake. The decision is per-version and committed, not an environment variable.
 Carrying one means accepting a hazard that has not gone away:
 
 - a snapshot's HCB carries the same two version bytes as the release it
-  precedes. Measured on the real artifact: `v3.7.0-dev.14` reads `57 a8 37 00`,
-  exactly what a released 3.7.0 will read. No version-byte check can tell them
-  apart, including the one every client uses to validate a ROM.
+  precedes. Measured on the real artifacts: `v3.7.0-dev.14` and `v3.7.0-dev.16`
+  both read `57 a8 37 00`, exactly what a released 3.7.0 will read. No
+  version-byte check can tell them apart, including the one every client uses
+  to validate a ROM.
 - RomWBW's CBIOS compares major.minor only, so a snapshot disk booted against a
   release ROM of the same major.minor prints **no** mismatch warning.
 - upstream can change anything before the release ships, and this repo's
   per-version tags are immutable once published.
+- upstream deletes a snapshot's GitHub release when it cuts the next one, so
+  the pinned `package_url` starts to answer 404. `v3.7.0-dev.14`'s did by
+  2026-11-09 (the git tag stayed). The weekly full build then cannot rebuild
+  the snapshot, and nothing that fetches the stock package can reach it.
 
 What contains it:
 
 - the version directory is named for the **full upstream tag**
-  (`versions/3.7.0-dev.14/`), so every asset name and the release tag carry the
+  (`versions/3.7.0-dev.16/`), so every asset name and the release tag carry the
   suffix and cannot collide with a real 3.7.0 when it ships;
-- the CBIOS banner is the one thing that separates them - `CBIOS v3.7.0-dev.14
+- the CBIOS banner is the one thing that separates them - `CBIOS v3.7.0-dev.16
   [WBW]` against `CBIOS v3.7.0 [WBW]` - and `boot_test.sh` asserts both that the
   disk carries it and that the ROM does **not**;
 - `prerelease: true` reaches the index and the catalog, and

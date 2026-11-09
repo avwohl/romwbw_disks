@@ -9,7 +9,7 @@ Two things get published, and they are published differently:
 
 | What | Tag | Mutable? | Size |
 |---|---|---|---|
-| ROMs, disk images, `catalog-v0-<ver>.json`, `disks-v0-<ver>.xml` | `v0-romwbw-<ver>` | **No.** Immutable once a client has shipped against it — see section 5. | 202 MB (3.5.1), 234 MB (3.6.0), 218 MB (3.7.0-dev.14) |
+| ROMs, disk images, `catalog-v0-<ver>.json`, `disks-v0-<ver>.xml` | `v0-romwbw-<ver>` | **No.** Immutable once a client has shipped against it — see section 5. | 202 MB (3.5.1), 234 MB (3.6.0), 218 MB (3.7.0-dev.16) |
 | `index-v0.json` | `catalog-v0` | Yes. Re-cut whenever the set of versions changes. | 6412 bytes |
 
 Section 4 explains why the split exists.
@@ -164,8 +164,8 @@ not exactly `CBIOS v<ver> [WBW]`, and a manifest that asked for W8/R8 where the
 directory does not have them. The banner check is a whole-string match, not
 major.minor, precisely so a `-dev.NN` banner fails — *unless the version
 directory is itself named for the snapshot*, which is exactly how a snapshot is
-carried. For `versions/3.7.0-dev.14/`, `$VER` **is** `3.7.0-dev.14`, so the
-expected banner is `CBIOS v3.7.0-dev.14 [WBW]` and the images match it. That is
+carried. For `versions/3.7.0-dev.16/`, `$VER` **is** `3.7.0-dev.16`, so the
+expected banner is `CBIOS v3.7.0-dev.16 [WBW]` and the images match it. That is
 why the directory must be named for the full upstream tag and never `3.7.0`:
 the whole-string match is what keeps a carried snapshot honest, and naming the
 directory `3.7.0` would turn that check from a guard into a rubber stamp.
@@ -233,7 +233,7 @@ Deleting `$ROMWBW_CACHE/.romwbw-dl` costs a re-download; deleting `build/` costs
 ## 3. Reproducibility
 
 A clean rebuild produces **all 72 artifacts byte-identical** — 2 ROMs and 20 disk
-images for 3.5.1, 2 ROMs and 24 for 3.6.0, 2 ROMs and 22 for 3.7.0-dev.14.
+images for 3.5.1, 2 ROMs and 24 for 3.6.0, 2 ROMs and 22 for 3.7.0-dev.16.
 Including the three catalogs, the three legacy XML files and the index, all 79
 generated files match.
 
@@ -368,7 +368,7 @@ Entry point: https://github.com/$REPO/releases/latest/download/index-v0.json"
 
 gh release upload "$TAG" --repo "$REPO" build/"$TAG"/*
 
-# 24 files for 3.5.1, 28 for 3.6.0, 26 for 3.7.0-dev.14.  Check before you publish.
+# 24 files for 3.5.1, 28 for 3.6.0, 26 for 3.7.0-dev.16.  Check before you publish.
 gh release view "$TAG" --repo "$REPO" --json assets \
   --jq '.assets | length, (.[].name)'
 

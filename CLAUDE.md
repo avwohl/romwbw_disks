@@ -89,14 +89,14 @@ says so. Do not change it back.
 ## Snapshots are carried, deliberately and never as the default
 
 This section said **"Never publish a snapshot"** until 2026-09-18. The owner
-decided otherwise, and `v3.7.0-dev.14` is carried. The reasoning that produced
-the old rule was not wrong, so none of it is deleted - it is the reason for
-every guard below.
+decided otherwise, and `v3.7.0-dev.16` is carried (it replaced `v3.7.0-dev.14`
+on 2026-11-09; see below). The reasoning that produced the old rule was not
+wrong, so none of it is deleted - it is the reason for every guard below.
 
 **The hazard, measured rather than argued.** A snapshot's HCB carries the same
-two version bytes as the release it precedes. `v3.7.0-dev.14`'s stock ROM reads
-`57 a8 37 00` at 0x103 - byte for byte what a released 3.7.0 will read. So
-nothing computed from those bytes can tell them apart, including
+two version bytes as the release it precedes. The stock ROMs of `v3.7.0-dev.14`
+and `v3.7.0-dev.16` both read `57 a8 37 00` at 0x103 - byte for byte what a
+released 3.7.0 will read. So nothing computed from those bytes can tell them apart, including
 `emu_validate_rom_hcb`, which is how every client decides a ROM is loadable.
 RomWBW's CBIOS compares major.minor only, so the mismatch warning will not fire
 between a snapshot and its release either.
@@ -105,7 +105,7 @@ between a snapshot and its release either.
 it carries the full tag. The asymmetry is worth memorising:
 
     ROM  (two HCB bytes)  -> emulator prints "RomWBW v3.7.0"
-    disk (CBIOS banner)   -> "CBIOS v3.7.0-dev.14 [WBW]"
+    disk (CBIOS banner)   -> "CBIOS v3.7.0-dev.16 [WBW]"
 
 `tools/boot_test.sh` asserts BOTH halves, including that the ROM does *not*
 report the suffix - so if upstream ever changes the HCB, this repository finds
@@ -114,7 +114,7 @@ out rather than assuming.
 **The four things that make carrying one safe:**
 
 1. **The version directory is named for the full upstream tag** -
-   `versions/3.7.0-dev.14/`, not `3.7.0`. That name flows into every asset
+   `versions/3.7.0-dev.16/`, not `3.7.0`. That name flows into every asset
    name, the release tag, and `$VER` in `build_disks.sh`'s exact-match banner
    assertion, which is why that assertion needed no change.
 2. **`"prerelease": true` in `versions/<ver>/version.json`**, propagated by
@@ -165,13 +165,24 @@ between them. Nothing in the tooling detects that, because each entry is
 individually correct.
 
 So when the release lands: add `versions/3.7.0/`, delete
-`versions/3.7.0-dev.14/` and `catalog/v0/3.7.0-dev.14/`, and regenerate. The
+`versions/3.7.0-dev.16/` and `catalog/v0/3.7.0-dev.16/`, and regenerate. The
 entry leaves the index and clients stop seeing it. The immutable
-`v0-romwbw-3.7.0-dev.14` release tag stays live, so anything already pointing
+`v0-romwbw-3.7.0-dev.16` release tag stays live, so anything already pointing
 at those assets keeps working - which is the whole reason per-version tags are
 immutable. The same applies between snapshots: carry one at a time unless there
 is a reason not to, or the index accumulates half a gigabyte of superseded
 development builds.
+
+**UPSTREAM DELETES SUPERSEDED SNAPSHOT RELEASES.** By
+2026-11-09 `wwarthen/RomWBW` had removed the `v3.7.0-dev.14` GitHub release (the
+git tag stayed) and published `v3.7.0-dev.16`. The pinned `package_url` then
+answers 404: the weekly full build cannot rebuild the carried snapshot, and
+z80fpga, which extracts the stock ROM from that package, cannot reach it either.
+Our own `v0-romwbw-3.7.0-dev.14` assets kept serving. So a carried snapshot has
+a shelf life: when `tools/check_upstream.sh` shows a newer snapshot, move to it
+the way dev.14 moved to dev.16 - copy the three manifests under the new name,
+clear `package_sha256`, delete the old version and catalog directories, build,
+boot-test, publish.
 
 **Do not name a version directory `3.7.0` for a snapshot.** That is the one
 move that breaks everything above at once: the banner assertion would fail, the
