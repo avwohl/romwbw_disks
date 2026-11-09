@@ -72,6 +72,19 @@ print("\n".join(names))
 ASSETS
 }
 
+# One line per asset on a release: "name size digest", with "-" for no digest.
+# READ FROM THE REST API, NOT `gh release view --json assets`.  That field list
+# is whatever the installed gh knows about, and older gh - Ubuntu's 2.46.0
+# package, measured 2026-11-09 - has no `digest` in it at all, so every asset
+# came back digestless while the API was serving a sha256 for each one.  The
+# read-backs below then fell to size-only, and the index check failed closed
+# on an index that was in fact up and correct.  The API's answer does not
+# depend on the client's version.
+served_assets() {
+    gh api "repos/$REPO_SLUG/releases/tags/$1" \
+        --jq '.assets[] | "\(.name) \(.size) \(.digest // "-")"'
+}
+
 run() {
     if [ "$DRY" = "1" ]; then
         echo "    would run: $*"
@@ -195,8 +208,7 @@ for v in $VERSIONS; do
     resume=0
     already=""
     if gh release view "$tag" --repo "$REPO_SLUG" >/dev/null 2>&1; then
-        remote="$(gh release view "$tag" --repo "$REPO_SLUG" \
-                 --json assets --jq '.assets[] | "\(.name) \(.size) \(.digest // "-")"' 2>/dev/null || true)"
+        remote="$(served_assets "$tag" 2>/dev/null || true)"
         conflict=""
         for a in $(catalog_assets "$dir" "$v"); do
             remote_size="$(printf '%s\n' "$remote" | awk -v n="$a" '$1 == n {print $2}')"
@@ -304,8 +316,7 @@ PY
     # gone up yet.  This is the last moment anything can be done about it.
     if [ "$DRY" = "0" ]; then
         served="$BUILD/.served-$tag"
-        gh release view "$tag" --repo "$REPO_SLUG" --json assets \
-           --jq '.assets[] | "\(.name) \(.size) \(.digest // "-")"' > "$served" ||
+        served_assets "$tag" > "$served" ||
             die "$tag was published but its asset list could not be read back."
         rb_bad=""
         rb_n=0
@@ -417,15 +428,14 @@ This is the only tag in this repo that changes. Every \`$IFACE-romwbw-*\` tag is
         # Separate "GitHub answered, and the answer was empty" from "the call
         # failed": an expired token or a 502 would otherwise be reported as the
         # asset being absent, which is a claim this did not measure.
-        got="$(gh release view "catalog-$IFACE" --repo "$REPO_SLUG" --json assets \
-               --jq ".assets[] | select(.name == \"$idxasset\") | .digest")" ||
+        got="$(served_assets "catalog-$IFACE" | awk -v n="$idxasset" '$1 == n {print $3}')" ||
             die "$idxasset was uploaded but the read-back call itself failed, so
        nothing is known about what catalog-$IFACE is serving.  Do not assume this
        publish landed - check it:
          gh release view catalog-$IFACE --repo $REPO_SLUG --json assets"
         if [ "$got" = "$want" ]; then
             note "read back: catalog-$IFACE serves $idxasset at $want"
-        elif [ -z "$got" ] || [ "$got" = "null" ]; then
+        elif [ -z "$got" ] || [ "$got" = "-" ]; then
             die "$idxasset is not on catalog-$IFACE after the upload, or GitHub
        reports no digest for it.  Read the stored object back before believing
        this publish:
