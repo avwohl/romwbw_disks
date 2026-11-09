@@ -314,24 +314,37 @@ W8 SRC.TXT out.txt
 
         # NZCOM is the awkward one.  The slice's volume LABEL differs between
         # releases - "NZ-COM" under 3.6.0, "ZSDOS 1.1" under 3.5.1 - so a label
-        # is not the test.  What is: after NZCOM.ZCM loads, the ZCPR3 command
-        # processor is resident, and it answers an unknown command differently
-        # from the stock CP/M CCP.  `PATH` gets "No File" here and "PATH?" on
-        # slice 0, on both releases.  That is Z-System being present, not a
-        # string that happens to be in the boot text.
+        # is not the test.  What is: the slice boots ZSDOS, its autoexec runs
+        # NZCOM.ZCM, and only once the loader finishes is the ZCPR3 command
+        # processor resident.  Three things show that, and none is printed by
+        # the ZSDOS command processor underneath: the loader's banner, a
+        # named-directory prompt (A0:SYSTEM>), and `PATH` found on the ZCPR3
+        # search path - it runs SETPATH out of A15:.
+        #
+        # THIS TEST PASSED FOR THE WRONG REASON UNTIL 2026-11-09.  It used to
+        # accept "No File" as proof of ZCPR3, but that is what ZSDOS's own
+        # command processor answers (boot slice 1 and type PATH).  Under
+        # romwbw_emu up to v1.47 the piped keystrokes aborted the autoexec
+        # after it echoed "NZCOM NZCOM.ZCM", NZCOM never loaded, and the bare
+        # ZSDOS prompt said "No File" - so the check passed on a slice where
+        # NZCOM had not run.  v1.48 holds piped stdin until the guest wants a
+        # key, NZCOM really loads, PATH finds SETPATH, and the old check
+        # failed on a correct boot.  "No File" is a failure now.
         nz="$(run_emu_script_at "$rom" "$disk" 2.2 'PATH
 ')"
         case "$nz" in
-            *"NZCOM NZCOM.ZCM"*) : ;;
-            *) bad "NZCOM slice did not run its NZCOM.ZCM autoexec" ;;
+            *"NZCOM Version 1.2 System Loader"*) : ;;
+            *) bad "NZCOM slice: the NZCOM loader never ran - the autoexec did not take" ;;
         esac
         case "$nz" in
+            *"A0:SYSTEM>PATH"*"SETPATH"*)
+                pass "NZCOM boots and ZCPR3 is resident (A0:SYSTEM>, PATH -> SETPATH)" ;;
             *"No File"*)
-                pass "NZCOM boots and ZCPR3 is resident (PATH -> \"No File\")" ;;
+                bad "NZCOM slice: PATH answered \"No File\" - that is the ZSDOS command processor, so NZCOM did not load" ;;
             *"PATH?"*)
                 bad "NZCOM slice booted to a stock CP/M CCP - PATH answered \"PATH?\", so NZCOM did not take" ;;
             *)
-                bad "NZCOM slice: PATH answered neither \"No File\" nor \"PATH?\"" ;;
+                bad "NZCOM slice: no A0:SYSTEM> prompt running PATH as SETPATH" ;;
         esac
 
         # Z3PLUS ships as its own image rather than a combo slice.  It is built
