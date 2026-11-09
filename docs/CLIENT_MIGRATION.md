@@ -93,9 +93,13 @@ only one answer now. `emu_set_allow_untested_romwbw()`,
 `emu_allow_untested_romwbw()`, the `--allow-untested-romwbw` flag and the
 `RomWBW releases this build can run:` line on `--version` went with them.
 
-## What a client offers now: everything the index lists
+## What a client offers now: every release, and snapshots on request
 
-**Offer the whole list.** Every release in a v0 index was booted against the
+**Offer every release the index lists.** The one exception is an entry with
+`"prerelease": true`, a RomWBW development snapshot. Hide it until the user
+opts in. Step 7 of "Suggested order" gives the rules.
+
+Every release in a v0 index was booted against the
 emulator before it was published (`tools/boot_test.sh`, made required by
 [RELEASING.md](RELEASING.md) §5), so there is nothing for a client to screen
 out on its core's behalf. A release this family's core could not service would
@@ -377,6 +381,52 @@ for the family, and no client needs an assembler.
    made. The surviving consumer is `disks/verify_disk_utils.sh`, run by
    `make -C src test` (`src/makefile:202`); `disks/rebuild_disk_utils.sh` and
    `roms/build_from_source.sh` went with the artifacts.
+7. **Each client, release D: hide development snapshots behind an opt-in.**
+   This repository started to carry a snapshot on 2026-09-18
+   (`3.7.0-dev.14`, now `3.7.0-dev.16`). The index marks a snapshot with
+   `"prerelease": true`. [CATALOG_SCHEMA.md](CATALOG_SCHEMA.md) §2.3 has the
+   rule and §2.3.1 the reason. Do these things:
+   - Read `prerelease` as an optional boolean. A missing key means `false`.
+   - Keep the opt-in off by default, for a new install and for an upgrade.
+   - When the opt-in is off, hide each `prerelease` entry from the list and from selection.
+   - When the opt-in is on, select the `default` entry automatically, never a snapshot.
+   - When the user turns the opt-in off on a snapshot, move to the `default` entry.
+   - Show the entry's `label`. For a snapshot, the label ends in
+     `(development snapshot)`.
+   - Do not delete downloaded files when the selection moves.
+
+   **Expect the selected snapshot to leave the index.** Upstream deleted the
+   GitHub releases of `3.7.0-dev.14` and `3.7.0-dev.15` after it published
+   `3.7.0-dev.16`, and kept only the git tags. When that occurs, this
+   repository moves to the new snapshot and retires the old entry (CLAUDE.md,
+   "Snapshots are carried"). On 2026-11-09, `3.7.0-dev.14` left the index and
+   `3.7.0-dev.16` replaced it.
+
+   When the stored version is not in the index, select the `default` entry. Do
+   not move to the newer snapshot without the user. The newer snapshot is a
+   different build, and the user did not choose it.
+
+   A command-line client can also take the exact version name as the opt-in.
+   The user who types `3.7.0-dev.16` asked for the snapshot. A GUI client has
+   no such path. Its picker shows only the filtered list.
+
+   **Written** in all five clients that read the index:
+
+   | Client | Opt-in | Commit |
+   |---|---|---|
+   | z80cpmw | "Show pre release" checkbox under the release picker | `848684f` and `739a194`, 2026-09-18 |
+   | ioscpm | "Show Development Snapshots" toggle under the release picker | `731ff14` and `fd6654a`, 2026-09-18 |
+   | cpmdroid | "Show pre release" checkbox under the release picker | `30df073`, 2026-09-18 |
+   | romwbw_emu `tools/romwbw-get` | `--prerelease`, `ROMWBW_PRERELEASE=1`, or an exact version name | `4375a90`, 2026-09-19 |
+   | z80fpga `tools/romwbw_fetch.py` | `--prerelease`, `ROMWBW_PRERELEASE=1`, or an exact version name | `3a378e2`, 2026-09-22 |
+
+   The four clients that store a selection fall back to the `default` entry
+   when the stored version leaves the index. z80fpga stores no selection. A
+   retired version given by name makes it exit with an error, unless the
+   output of an earlier fetch is already in place. No client deletes files, so
+   the files of a retired snapshot stay on the device, and no client offers to
+   reclaim them. Which builds carry the opt-in is in each client's changelog,
+   not here.
 
 Steps 3, 4 and 5 were written as separate numbered releases inside each client
 even though they were written together, because the ordering is the safety
