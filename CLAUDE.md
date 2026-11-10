@@ -236,8 +236,10 @@ Two of the three also bundle a copy as an offline floor - ioscpm's
 `release_assets/` (which z80cpmw's `.rc` also compiles from) and cpmdroid's
 `app/src/main/assets/help/`. Rewriting a topic here leaves those stale until
 they are refreshed. ioscpm's `tools/check-help-assets.py` notices for the
-ioscpm/z80cpmw pair; **cpmdroid's bundled copy is covered by nothing**, so a
-rewritten topic leaves the Android offline floor stale silently.
+ioscpm/z80cpmw pair, and since cpmdroid 70e0241 cpmdroid's
+`tools/check-help-assets.py` notices for its copy and its `help_index.json`.
+**Neither runs on its own**: both are run by hand, so after rewriting a topic
+here, run both, or the offline floors stay stale.
 
 ## todo.txt
 
